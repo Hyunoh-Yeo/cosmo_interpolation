@@ -1,0 +1,10 @@
+# GPU node (grammar) — CUDA required. Install the wheel matching the cluster toolkit:
+#   pip install cupy-cuda12x      # CUDA 12.x
+#   pip install cupy-cuda11x      # CUDA 11.x
+cupy-cuda12x          # the compute path is CuPy-only (no NumPy fallback)
+
+# Host-side data prep + analysis (always)
+numpy>=1.24
+scipy>=1.10
+matplotlib>=3.6       # only for --plot
+h5py>=3.8             # only needed when reading/writing real HDF5 snapshots
