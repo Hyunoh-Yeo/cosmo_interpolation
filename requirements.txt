@@ -8,3 +8,7 @@ numpy>=1.24
 scipy>=1.10
 matplotlib>=3.6       # only for --plot
 h5py>=3.8             # only needed when reading/writing real HDF5 snapshots
+
+# Optional: GP variant (GPCosmologyInterpolator) — learned hyperparams + uncertainty
+torch>=2.0
+gpytorch>=1.13

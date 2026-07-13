@@ -12,7 +12,12 @@ import numpy as np
 
 from .backend import backend_name, timed, device_mem_gb
 from .make_mock import build_dataset, truth_at
-from .gpu_interp import CosmologyInterpolator
+from .gpu_interp import CosmologyInterpolator, select_epsilon
+
+try:                                     # GP variant is optional (torch + gpytorch)
+    from .gp_interp import GPCosmologyInterpolator
+except Exception:
+    GPCosmologyInterpolator = None
 
 
 def make_grid():
@@ -47,35 +52,55 @@ def run_case(name, ds, train_idx, test_theta, true_pos, true_vel, box, tile):
     disp_tr = disp[train_idx]
     vel_tr = ds["vel"][train_idx]
 
-    results = {}
-    for method in ("linear", "rbf"):
-        ip = CosmologyInterpolator(method=method).fit_basis(theta_tr)
-        dp = ip.predict(disp_tr, test_theta, tile=tile)[0]
-        pp = np.mod(q + dp, box)
-        pe = pos_error(pp, true_pos, box)
+    # RBF: auto-tune the shape parameter (leave-one-cosmology-out CV on a subsample)
+    rng = np.random.default_rng(0)
+    samp = rng.choice(disp_tr.shape[1], size=min(2000, disp_tr.shape[1]), replace=False)
+    eps_rbf = select_epsilon(theta_tr, disp_tr[:, samp, :])
 
-        iv = CosmologyInterpolator(method=method).fit_basis(theta_tr)
-        vp = iv.predict(vel_tr, test_theta, tile=tile)[0]
-        ve = vec_error(vp, true_vel)
+    results = {}
+    for method in ("linear", "quadratic", "rbf"):
+        kw = {"epsilon": eps_rbf} if method == "rbf" else {}
+        ip = CosmologyInterpolator(method=method, **kw).fit_basis(theta_tr)
+        dp = ip.predict(disp_tr, test_theta, tile=tile)[0]
+        pe = pos_error(np.mod(q + dp, box), true_pos, box)
+        iv = CosmologyInterpolator(method=method, **kw).fit_basis(theta_tr)
+        ve = vec_error(iv.predict(vel_tr, test_theta, tile=tile)[0], true_vel)
         results[method] = (pe, ve)
+
+    gp_std = None
+    if GPCosmologyInterpolator is not None:            # GP: one more model to compare
+        gpd = GPCosmologyInterpolator(iters=100).fit(theta_tr, disp_tr[:, samp, :])
+        gpd.prepare(theta_tr)
+        peg = pos_error(np.mod(q + gpd.predict(disp_tr, test_theta, tile=tile)[0], box), true_pos, box)
+        gpv = GPCosmologyInterpolator(iters=100).fit(theta_tr, vel_tr[:, samp, :])
+        gpv.prepare(theta_tr)
+        veg = vec_error(gpv.predict(vel_tr, test_theta, tile=tile)[0], true_vel)
+        results["GP"] = (peg, veg)
+        gp_std = float(gpd.predict_uncertainty(test_theta)[0])
 
     rms_disp = np.sqrt((disp_tr ** 2).sum(-1).mean())
     rms_vel = np.sqrt((vel_tr ** 2).sum(-1).mean())
+    methods = ["linear", "quadratic", "rbf"] + (["GP"] if "GP" in results else [])
+    label = {"linear": "linear (baseline)", "quadratic": "quadratic",
+             "rbf": "rbf (tuned)", "GP": "GP (+uncertainty)"}
 
-    label = {"linear": "linear (baseline)", "rbf": "rbf (in dev)"}
     print(f"\n=== {name}  (theta = Om0={test_theta[0]:.3f}, "
           f"w0={test_theta[1]:.3f}, wa={test_theta[2]:.3f}) ===")
     print(f"  train cosmologies: {len(train_idx)}   "
           f"rms displacement: {rms_disp:.3f} cMpc/h   rms vpec: {rms_vel:.1f} km/s")
     print(f"  {'method':18s} {'pos med':>9s} {'pos 95%':>9s} "
           f"{'(pos med / rms)':>16s} {'vel med':>9s}")
-    for m in ("linear", "rbf"):
+    for m in methods:
         pe, ve = results[m]
         print(f"  {label[m]:18s} {np.median(pe):9.4f} {np.percentile(pe,95):9.4f} "
               f"{np.median(pe)/rms_disp:16.4f} {np.median(ve):8.2f} km/s")
-    impr = np.median(results["linear"][0]) / np.median(results["rbf"][0])
-    print(f"  -> linear interpolation is the deliverable baseline; "
-          f"the in-dev RBF is {impr:.1f}x more accurate here")
+    base = np.median(results["linear"][0])
+    gains = "  ".join(f"{m} {base/np.median(results[m][0]):.1f}x"
+                      for m in methods if m != "linear")
+    print(f"  -> vs linear baseline: {gains}")
+    if gp_std is not None:
+        print(f"  GP uncertainty (posterior std): {gp_std:.4f} cMpc/h "
+              f"(theta-only; shared across particles)")
     return results
 
 

@@ -37,12 +37,40 @@ def _pairwise_dist(a, b):
     return xp.sqrt(xp.clip(d2, 0.0, None))
 
 
+_KERNELS = {
+    "multiquadric": lambda r, e: xp.sqrt(r * r + e * e),
+    "inverse_multiquadric": lambda r, e: 1.0 / xp.sqrt(r * r + e * e),
+    "gaussian": lambda r, e: xp.exp(-(r * r) / (e * e)),
+}
+
+
+def _rbf_operator(ts, eps, kernel, reg, poly_fn):
+    """Reusable RBF operator L = A^{-1}[:, :M] for the augmented kernel+polynomial system."""
+    M = ts.shape[0]
+    Phi = _KERNELS[kernel](_pairwise_dist(ts, ts), eps) + reg * xp.eye(M, dtype=ts.dtype)
+    Pm = poly_fn(ts)
+    p = Pm.shape[1]
+    A = xp.zeros((M + p, M + p), dtype=ts.dtype)
+    A[:M, :M] = Phi
+    A[:M, M:] = Pm
+    A[M:, :M] = Pm.T
+    return xp.linalg.inv(A)[:, :M]                            # (M+p, M); RHS tail is zero
+
+
+def _rbf_query(ts_q, ts_tr, eps, kernel, poly_fn):
+    K = _KERNELS[kernel](_pairwise_dist(ts_q, ts_tr), eps)
+    return xp.concatenate([K, poly_fn(ts_q)], axis=1)
+
+
 class CosmologyInterpolator:
-    def __init__(self, method="rbf", reg=1e-6, epsilon=None, dtype=xp.float32):
-        assert method in ("linear", "rbf")
+    def __init__(self, method="rbf", reg=1e-6, epsilon=None,
+                 kernel="multiquadric", dtype=xp.float32):
+        assert method in ("linear", "quadratic", "rbf")
+        assert kernel in _KERNELS
         self.method = method
         self.reg = reg
-        self.epsilon = epsilon       # RBF shape param; default = mean pairwise dist
+        self.epsilon = epsilon       # RBF shape param; None -> mean pairwise dist heuristic
+        self.kernel = kernel         # multiquadric | inverse_multiquadric | gaussian
         self.dtype = dtype
         self._ready = False
 
@@ -50,6 +78,13 @@ class CosmologyInterpolator:
     def _poly(ts):
         ones = xp.ones((ts.shape[0], 1), dtype=ts.dtype)
         return xp.concatenate([ones, ts], axis=1)        # [1, Om, w0, wa]
+
+    @staticmethod
+    def _poly2(ts):
+        # 2nd-order Taylor basis in theta: [1, x, x^2, cross terms] -> 10 columns
+        o = xp.ones((ts.shape[0], 1), dtype=ts.dtype)
+        a, b, c = ts[:, 0:1], ts[:, 1:2], ts[:, 2:3]
+        return xp.concatenate([o, a, b, c, a*a, b*b, c*c, a*b, a*c, b*c], axis=1)
 
     def fit_basis(self, theta_train):
         """Build the cosmology-only structure (cheap; depends on M, not N)."""
@@ -62,24 +97,19 @@ class CosmologyInterpolator:
         if self.method == "linear":
             self._tri = Delaunay(self._ts_h)                 # triangulate cosmology space
             self._L = None                                   # prediction = Wbary @ Y
-        else:
-            self._mu = to_device(self._mu_h, self.dtype)
-            self._sd = to_device(self._sd_h, self.dtype)
+        elif self.method == "quadratic":
             ts = to_device(self._ts_h, self.dtype)
-            Pm = self._poly(ts)                              # (M,4)
-            D = _pairwise_dist(ts, ts)
+            P2 = self._poly2(ts)                             # (M,10)
+            G = P2.T @ P2 + self.reg * xp.eye(P2.shape[1], dtype=self.dtype)
+            self._L = xp.linalg.solve(G, P2.T)              # (10, M) least-squares operator
+        else:
+            ts = to_device(self._ts_h, self.dtype)
             if self.epsilon is None:
-                off = D[~xp.eye(self._M, dtype=bool)]
-                self._eps = self.dtype(off.mean())
+                D = _pairwise_dist(ts, ts)
+                self._eps = self.dtype(D[~xp.eye(self._M, dtype=bool)].mean())
             else:
                 self._eps = self.dtype(self.epsilon)
-            Phi = xp.sqrt(D * D + self._eps**2) + self.reg * xp.eye(self._M, dtype=self.dtype)
-            m = self._M
-            A = xp.zeros((m + 4, m + 4), dtype=self.dtype)
-            A[:m, :m] = Phi
-            A[:m, m:] = Pm
-            A[m:, :m] = Pm.T
-            self._L = xp.linalg.inv(A)[:, :m]                # (M+4, M); RHS tail is zero
+            self._L = _rbf_operator(ts, self._eps, self.kernel, self.reg, self._poly)
             self._theta_s = ts
         self._ready = True
         return self
@@ -110,11 +140,11 @@ class CosmologyInterpolator:
         ts_h = (tq_h - self._mu_h) / self._sd_h
         if self.method == "linear":
             return tq_h.shape[0], to_device(self._bary_weights(ts_h), self.dtype)
+        if self.method == "quadratic":
+            return tq_h.shape[0], self._poly2(to_device(ts_h, self.dtype))
         ts = to_device(ts_h, self.dtype)
-        Pq = self._poly(ts)                                  # (Q,4)
-        D = _pairwise_dist(ts, self._theta_s)
-        K = xp.sqrt(D * D + self._eps**2)
-        return tq_h.shape[0], xp.concatenate([K, Pq], axis=1)   # (Q, M+4)
+        qb = _rbf_query(ts, self._theta_s, self._eps, self.kernel, self._poly)
+        return tq_h.shape[0], qb                                # (Q, M+4)
 
     # ---- prediction ----
     def predict_tile(self, Y_tile, theta_query):
@@ -142,3 +172,40 @@ class CosmologyInterpolator:
     def fit(self, theta_train, Y_train=None):
         """Convenience alias for fit_basis (Y is supplied later to predict)."""
         return self.fit_basis(theta_train)
+
+
+def select_epsilon(theta_train, Y_sample, kernel="multiquadric",
+                   scales=(0.25, 0.5, 1.0, 2.0, 4.0), reg=1e-6, dtype=xp.float32):
+    """Pick the RBF shape parameter by leave-one-cosmology-out cross-validation.
+
+    Drop each cosmology in turn, reconstruct it from the others, and measure the
+    error on a small particle subsample -- exactly the "predict an unsimulated
+    cosmology" task. Returns the best epsilon (float) over base_dist * scales,
+    where base_dist is the mean pairwise distance in standardised theta space.
+
+    theta_train: (M,3);  Y_sample: (M, n_sample, 3) a cheap subsample of the field.
+    """
+    theta_h = np.asarray(theta_train, dtype=np.float64)
+    mu = theta_h.mean(0, keepdims=True)
+    sd = theta_h.std(0, keepdims=True) + 1e-12
+    ts = to_device((theta_h - mu) / sd, dtype)
+    M = ts.shape[0]
+    Y = to_device(Y_sample, dtype).reshape(M, -1)
+    base = float(asnumpy(_pairwise_dist(ts, ts)[~xp.eye(M, dtype=bool)].mean()))
+    poly = CosmologyInterpolator._poly
+
+    best_eps, best_err = None, np.inf
+    for sc in scales:
+        eps = dtype(base * sc)
+        err = 0.0
+        for k in range(M):
+            idx = [i for i in range(M) if i != k]
+            tsk, Yk = ts[idx], Y[idx]
+            L = _rbf_operator(tsk, eps, kernel, reg, poly)
+            qb = _rbf_query(ts[k:k + 1], tsk, eps, kernel, poly)
+            pred = qb @ (L @ Yk)
+            err += float(asnumpy(xp.sqrt(((pred - Y[k:k + 1]) ** 2).mean())))
+        err /= M
+        if err < best_err:
+            best_eps, best_err = float(base * sc), err
+    return best_eps

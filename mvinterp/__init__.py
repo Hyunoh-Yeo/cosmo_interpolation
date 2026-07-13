@@ -1,17 +1,29 @@
 """mvinterp: GPU-accelerated per-particle interpolation of Multiverse-style
 N-body snapshots across (Om0, w0, wa) cosmologies.
-
-Prototype for the KASI internship (Dr. S. E. Hong): reconstruct snapshot data at
-unsimulated cosmologies by exploiting the shared initial conditions of the
-Multiverse set. Runs on CuPy (GPU, e.g. `grammar`) or NumPy (CPU) transparently.
 """
-from .backend import xp, backend_name
 from .cpl_growth import CPLGrowth
 from .make_mock import build_dataset, truth_at, generate_fields
-from .gpu_interp import CosmologyInterpolator
+
+# CuPy compute path (GPU nodes). Guarded so the package still imports on a laptop
+# without CuPy -- the host-side pieces (mock, growth, GP, compare) then still work.
+try:
+    from .backend import xp, backend_name
+    from .gpu_interp import CosmologyInterpolator, select_epsilon
+except Exception:  # CuPy not installed
+    xp = None
+    def backend_name():
+        return "cupy not available (CPU host only)"
+    CosmologyInterpolator = None
+    select_epsilon = None
+
+# GP variant (needs torch + gpytorch).
+try:
+    from .gp_interp import GPCosmologyInterpolator
+except Exception:
+    GPCosmologyInterpolator = None
 
 __all__ = [
     "xp", "backend_name",
     "CPLGrowth", "build_dataset", "truth_at", "generate_fields",
-    "CosmologyInterpolator",
+    "CosmologyInterpolator", "select_epsilon", "GPCosmologyInterpolator",
 ]

@@ -1,9 +1,4 @@
 """CUDA backend (CuPy is required).
-
-This project targets the `grammar` GPU cluster, so CuPy/CUDA is assumed to be
-present. There is intentionally NO NumPy fallback for the compute path: import
-`xp` (= cupy) from here. Host-side data prep (mock generation, growth ODE) still
-uses NumPy/SciPy and is transferred to the device by the interpolator.
 """
 import time
 import contextlib
