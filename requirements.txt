@@ -9,6 +9,14 @@ scipy>=1.10
 matplotlib>=3.6       # only for --plot
 h5py>=3.8             # only needed when reading/writing real HDF5 snapshots
 
+# Cosmology (growth factor D(z), f(z)) — cpl_growth.py requires these
+camb
+cosmoprimo @ git+https://github.com/cosmodesi/cosmoprimo
+
+# Density painting (NGP/CIC/TSC) + power spectrum. NOTE: install from GitHub —
+# the PyPI package named "pypower" is an unrelated electrical-power solver.
+pypower @ git+https://github.com/cosmodesi/pypower
+
 # Optional: GP variant (GPCosmologyInterpolator) — learned hyperparams + uncertainty
 torch>=2.0
 gpytorch>=1.13

@@ -20,7 +20,10 @@ for the real GOTPM snapshot reader; the interpolation code is unchanged.
 import numpy as np
 from .cpl_growth import CPLGrowth
 
-Z_NORM = 1090.0  # common initial-condition epoch
+# Reference epoch the shared IC is normalised at. We use the simulations' actual
+# z_init (the Multiverse CAMB spectra are `camb.z=47_*`), which is also inside the
+# range where CAMB's growth factor is tabulated (it returns NaN above z~200).
+Z_NORM = 47.0
 
 
 def generate_fields(n=32, boxsize=1024.0, seed=42, ns=1.0, smooth_cells=1.0):

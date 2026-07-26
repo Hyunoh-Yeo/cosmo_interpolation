@@ -1,11 +1,15 @@
-"""Reader for GOTPM / Multiverse DM snapshot files.
+"""Reader for GOTPM / Multiverse DM snapshot files -- the ONE place the format lives.
+
+Every analysis script imports from here; none re-implement the decode. On the
+cluster, scp this file alongside the script you run (two files, still standalone).
 
 Format confirmed against real data (2026-07, MV_Om0.26_-1_0/INITIAL.0118000000):
   * ASCII header of variable length, terminated by the line '#End of Ascii Header'
   * then packed particle records, 32 bytes each, LITTLE-ENDIAN (no byte swap):
         float32 x, y, z, vx, vy, vz   +   int64 indx
-  * x,y,z are in-cell offsets (grid units); the absolute comoving position is
-        pos = fmod(offset + grid_index_from(indx), n) * (boxsize / n)
+  * x,y,z are DISPLACEMENTS from the Lagrangian grid node (grid units); the absolute
+    comoving position is
+        pos = fmod(displacement + grid_node_from(indx), n) * (boxsize / n)
     where indx is the GLOBAL Lagrangian index (0 .. Nx*Ny*Nz-1), shared across all
     Multiverse cosmologies (same initial conditions) -- this is what lets us line
     particles up between cosmologies for interpolation.
@@ -43,34 +47,74 @@ def read_header(path):
                 params[key.strip()] = val.strip()
 
 
-def _geom(params):
+def geom(params):
+    """(nx, ny, nz, box[cMpc/h], mx, mxmy) as numbers, pulled from the header."""
     nx = int(params["Nx"]); ny = int(params["Ny"]); nz = int(params["Nz"])
     box = float(params["Boxsize(Mpc/h)"])
     mx = int(params["Mx"]); mxmy = int(params["MxMy"])
     return nx, ny, nz, box, mx, mxmy
 
 
-def read_subfile(path, want_pos=True, want_vel=False):
-    """Read one subfile -> dict(indx, pos[N,3] cMpc/h, vel[N,3] raw, header).
+def redshift(params):
+    """z of a snapshot from its header (Amax = 48)."""
+    return 48.0 / float(params["Anow"]) - 1.0
 
-    `pos`/`vel` are only computed if requested (saves memory on huge files).
+
+def read_records(path, stride=1, id_mod=None, frac=None, rng=None):
+    """Return (structured record array, params).
+
+    stride>1  memory-maps and keeps every Nth record, so the OS only faults in the
+              pages it touches (a 4 KiB page holds 128 records, so stride>=128 also
+              cuts I/O; e.g. stride=1280 -> ~10x less read).
+    id_mod    keep only records with indx % id_mod == 0 (an identity-based sample:
+              picks the SAME Lagrangian particles in every cosmology).
+    frac      keep a uniform random fraction (needs rng); still reads the whole file.
     """
     params, off = read_header(path)
-    with open(path, "rb") as f:
-        f.seek(off)
-        rec = np.fromfile(f, dtype=RECORD)
+    if stride > 1:
+        n = (os.path.getsize(path) - off) // RECORD.itemsize
+        rec = np.array(np.memmap(path, dtype=RECORD, mode="r", offset=off, shape=(n,))[::stride])
+    else:
+        with open(path, "rb") as f:
+            f.seek(off)
+            rec = np.fromfile(f, dtype=RECORD)
+    if id_mod:
+        rec = rec[rec["indx"] % id_mod == 0]
+    if frac is not None and frac < 1.0:
+        rec = rec[rng.random(rec.size) < frac]
+    return rec, params
+
+
+def decode_positions(rec, params):
+    """Records -> absolute comoving positions [N,3] in cMpc/h.
+
+    indx encodes the Lagrangian grid node (indx = iz*MxMy + iy*Mx + ix); the stored
+    x/y/z are the displacement from that node. pos = (node + displacement) wrapped
+    into the box, scaled to cMpc/h. This decode is the physical core of the project.
+    """
+    nx, ny, nz, box, mx, mxmy = geom(params)
+    indx = rec["indx"]
+    ix = indx % mx
+    iy = (indx % mxmy) // mx
+    iz = indx // mxmy
+    pos = np.empty((rec.size, 3), np.float32)
+    pos[:, 0] = np.mod(rec["x"] + ix, nx) * (box / nx)
+    pos[:, 1] = np.mod(rec["y"] + iy, ny) * (box / ny)
+    pos[:, 2] = np.mod(rec["z"] + iz, nz) * (box / nz)
+    return pos
+
+
+def read_subfile(path, want_pos=True, want_vel=False, stride=1, id_mod=None,
+                 frac=None, rng=None):
+    """Read one subfile -> dict(indx, pos[N,3] cMpc/h, vel[N,3] raw, header, n).
+
+    `pos`/`vel` are only computed if requested (saves memory on huge files).
+    stride/id_mod/frac are forwarded to read_records (subsampling / identity slice).
+    """
+    rec, params = read_records(path, stride=stride, id_mod=id_mod, frac=frac, rng=rng)
     out = {"indx": rec["indx"], "header": params, "n": rec.size}
     if want_pos:
-        nx, ny, nz, box, mx, mxmy = _geom(params)
-        indx = rec["indx"]
-        ix = indx % mx
-        iy = (indx % mxmy) // mx
-        iz = indx // mxmy
-        pos = np.empty((rec.size, 3), np.float32)
-        pos[:, 0] = np.mod(rec["x"] + ix, nx) * (box / nx)
-        pos[:, 1] = np.mod(rec["y"] + iy, ny) * (box / ny)
-        pos[:, 2] = np.mod(rec["z"] + iz, nz) * (box / nz)
-        out["pos"] = pos
+        out["pos"] = decode_positions(rec, params)
     if want_vel:
         out["vel"] = np.stack([rec["vx"], rec["vy"], rec["vz"]], axis=1)  # raw units
     return out
@@ -92,21 +136,22 @@ def snapshot_steps(cosmo_dir, prefix="INITIAL"):
     return sorted(steps)
 
 
-def iter_snapshot(cosmo_dir, step, want_pos=True, want_vel=False, max_sub=None):
+def iter_snapshot(cosmo_dir, step, prefix="INITIAL", want_pos=True, want_vel=False,
+                  max_sub=None, **kw):
     """Yield per-subfile dicts for a whole snapshot (stream, don't hold all at once).
 
     Use this to process the ~275 GB/snapshot in tiles. `max_sub` limits how many
-    subfiles are read (handy for a quick test).
+    subfiles are read (handy for a quick test). Extra kwargs go to read_subfile.
     """
-    files = list_subfiles(cosmo_dir, step)
+    files = list_subfiles(cosmo_dir, step, prefix)
     if max_sub is not None:
         files = files[:max_sub]
     for p in files:
-        yield read_subfile(p, want_pos=want_pos, want_vel=want_vel)
+        yield read_subfile(p, want_pos=want_pos, want_vel=want_vel, **kw)
 
 
-def read_snapshot(cosmo_dir, step, want_pos=True, want_vel=False,
-                  max_sub=None, sort_by_index=False):
+def read_snapshot(cosmo_dir, step, prefix="INITIAL", want_pos=True, want_vel=False,
+                  max_sub=None, sort_by_index=False, **kw):
     """Read (and concatenate) a snapshot. WARNING: a full snapshot is ~2048^3
     particles (~275 GB) -- pass max_sub for tests, or use iter_snapshot for tiling.
 
@@ -114,20 +159,19 @@ def read_snapshot(cosmo_dir, step, want_pos=True, want_vel=False,
     row i is the same Lagrangian particle in every cosmology (enables interpolation).
     """
     idx, pos, vel = [], [], []
-    for d in iter_snapshot(cosmo_dir, step, want_pos, want_vel, max_sub):
+    for d in iter_snapshot(cosmo_dir, step, prefix, want_pos, want_vel, max_sub, **kw):
         idx.append(d["indx"])
         if want_pos:
             pos.append(d["pos"])
         if want_vel:
             vel.append(d["vel"])
-    idx = np.concatenate(idx)
-    out = {"indx": idx}
+    out = {"indx": np.concatenate(idx)}
     if want_pos:
         out["pos"] = np.concatenate(pos)
     if want_vel:
         out["vel"] = np.concatenate(vel)
     if sort_by_index:
-        order = np.argsort(idx, kind="stable")
+        order = np.argsort(out["indx"], kind="stable")
         for k in ("indx", "pos", "vel"):
             if k in out:
                 out[k] = out[k][order]
@@ -139,13 +183,14 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="peek a GOTPM snapshot with the reader")
     ap.add_argument("path", help="one subfile, OR a cosmology dir (with --step)")
     ap.add_argument("--step", type=int, help="snapshot step (if path is a dir)")
+    ap.add_argument("--prefix", default="INITIAL")
     ap.add_argument("--max-sub", type=int, default=1)
     args = ap.parse_args()
 
     if args.step is not None:
-        print("steps in dir:", snapshot_steps(args.path))
-        print("subfiles for step:", len(list_subfiles(args.path, args.step)))
-        d = read_snapshot(args.path, args.step, want_vel=True, max_sub=args.max_sub)
+        print("steps in dir:", snapshot_steps(args.path, args.prefix))
+        print("subfiles for step:", len(list_subfiles(args.path, args.step, args.prefix)))
+        d = read_snapshot(args.path, args.step, args.prefix, want_vel=True, max_sub=args.max_sub)
     else:
         d = read_subfile(args.path, want_vel=True)
 
