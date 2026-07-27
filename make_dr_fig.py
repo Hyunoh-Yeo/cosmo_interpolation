@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 plt.rcParams.update({"font.size": 12, "figure.dpi": 150, "axes.unicode_minus": False})
 
 SPACING = 0.5           # mean interparticle spacing, cMpc/h
-HONG = 10.0             # Dr. Hong's criterion
+CRIT = 10.0             # the 10 cMpc/h reference threshold
 
 # --- measured: (|dr|, fraction of particles exceeding it) ---
 # percentiles give (value, 1 - p); threshold counts give (value, count/N) directly.
@@ -48,8 +48,8 @@ for d in (SAME, DIFF):
 
 ax.axvline(SPACING, color="0.5", ls=":", lw=1.4, zorder=1)
 ax.text(SPACING * 1.08, 3e-8, "interparticle\nspacing 0.5", fontsize=9, color="0.35")
-ax.axvline(HONG, color="crimson", ls="--", lw=1.6, zorder=1)
-ax.text(HONG * 1.08, 3e-3, "Hong's 10 cMpc/h\ncriterion", fontsize=9.5, color="crimson")
+ax.axvline(CRIT, color="crimson", ls="--", lw=1.6, zorder=1)
+ax.text(CRIT * 1.08, 3e-3, "10 cMpc/h", fontsize=9.5, color="crimson")
 
 ax.set_xlabel(r"$|\Delta r|$  between the two cosmologies  [cMpc/h]")
 ax.set_ylabel(r"fraction of particles with $|\Delta r|$ greater than $x$")
