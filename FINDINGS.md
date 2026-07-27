@@ -115,6 +115,11 @@ rec = np.fromfile(f, dtype=REC)     # after seeking past the header; slices the 
   3.8–4.3, and consecutive slabs meet to 3 decimals — **max gap 0.000, max overlap
   0.000**. So "subfile j = z-layer j" is not an assumption but a measured fact, and the
   window method's j±w reach is well-founded (±3 → ±12.9 cMpc/h, vs a max mover of 2.9).
+- ⚠️ **the window bounds |Δz|, not |Δr|.** Slabs are cut along z, so a particle moving far
+  in x/y but little in z is still matched and its full 3-D |Δr| measured exactly (this is
+  why a max above w×4.3 can legitimately be reported). Only |Δz| > w×4.3 goes unmatched.
+  Motion is near-isotropic (|Δz| ~ |Δr|/√3), so big movers usually are caught — but any
+  run with unmatched > 0 has an **incomplete tail**, and needs a larger `--window`.
 - **Velocities**: raw code units (~1e-3) → km/s conversion factor (Pfact=51.2 / Fact1 /
   Fact2 + scale factor) still TO BE DETERMINED from GOTPM source.
 

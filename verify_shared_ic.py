@@ -43,21 +43,32 @@ def minimal_image(d, box):
 
 
 class Accum:
-    """Streaming |dr| statistics: histogram + threshold counts + worst offenders."""
+    """Streaming |dr| statistics: histogram + threshold counts + worst offenders.
 
-    def __init__(self):
+    If `save_above` is set, EVERY particle with |dr| > save_above is kept (indx,
+    |dr|, position in A) so the "sensitive locations" can be mapped, not just the
+    top-20. Pick the threshold so the kept set stays manageable (e.g. 5 cMpc/h ->
+    ~10k particles here, not the full billions)."""
+
+    def __init__(self, save_above=None):
         self.hist = np.zeros(len(BINS) - 1, np.int64)
         self.over = {t: 0 for t in THRESHOLDS}
         self.n = 0
         self.top_dr = np.zeros(0)
         self.top_id = np.zeros(0, np.int64)
         self.top_pos = np.zeros((0, 3), np.float32)
+        self.save_above = save_above
+        self.mv_dr, self.mv_id, self.mv_pos = [], [], []      # movers above threshold
 
     def add(self, dr, ids, pos):
         self.n += dr.size
         self.hist += np.histogram(dr, bins=BINS)[0]
         for t in THRESHOLDS:
             self.over[t] += int((dr > t).sum())
+        if self.save_above is not None:
+            m = dr > self.save_above
+            if m.any():
+                self.mv_dr.append(dr[m]); self.mv_id.append(ids[m]); self.mv_pos.append(pos[m])
         k = min(NTOP, dr.size)
         sel = np.argpartition(dr, -k)[-k:]
         self.top_dr = np.concatenate([self.top_dr, dr[sel]])
@@ -67,11 +78,36 @@ class Accum:
         self.top_dr, self.top_id, self.top_pos = \
             self.top_dr[keep], self.top_id[keep], self.top_pos[keep]
 
+    def save_movers(self, path, box):
+        """Write (indx, dr, x, y, z) for every saved mover -> .npy of shape (N, 5)."""
+        if not self.mv_dr:
+            print("no movers above %.2f cMpc/h to save" % self.save_above)
+            return
+        ids = np.concatenate(self.mv_id).astype(np.float64)
+        dr = np.concatenate(self.mv_dr).astype(np.float64)
+        pos = np.concatenate(self.mv_pos).astype(np.float64)
+        out = np.column_stack([ids, dr, pos])
+        np.save(path, out)
+        print("\nsaved %d movers > %.2f cMpc/h -> %s  (cols: indx, |dr|, x, y, z)"
+              % (out.shape[0], self.save_above, path))
+
     def percentile(self, q):
         """From the histogram (bin-resolution, adequate on a log grid)."""
         c = np.cumsum(self.hist)
         i = int(np.searchsorted(c, q / 100.0 * self.n))
         return BINS[min(i + 1, len(BINS) - 1)]
+
+    def brief(self, reach):
+        """One-line running summary, so a long scan can be read before it finishes.
+
+        `reach` is the window's |dr| ceiling: anything beyond it is unmatched rather
+        than measured, so the last bucket is open-ended and labelled that way."""
+        edges = [t for t in THRESHOLDS if t < reach]
+        parts = ["med %.3f" % self.percentile(50), "99.9%% %.3f" % self.percentile(99.9),
+                 "max %.3f" % (self.top_dr.max() if self.top_dr.size else np.nan)]
+        for lo, hi in zip(edges, edges[1:] + [reach]):
+            parts.append("%g-%g: %d" % (lo, hi, self.over[lo] - self.over.get(hi, 0)))
+        return "    " + " | ".join(parts)
 
     def report(self, box):
         print("\n|dr| over %d particles [cMpc/h]   (interparticle spacing %.3f)"
@@ -90,7 +126,7 @@ class Accum:
                   % (self.top_id[j], self.top_dr[j], *self.top_pos[j]))
 
 
-def run_window(fa, fb, w, box):
+def run_window(fa, fb, w, box, save_above=None):
     """Unbiased full-box scan by particle identity.
 
     Multiverse subfiles are Eulerian z-slabs (grouped by present-day position), so a
@@ -98,10 +134,17 @@ def run_window(fa, fb, w, box):
     one subfile would silently drop the boundary-crossers -- the biggest movers. But a
     particle moves far less than a slab thickness, so A's slab j maps into B's slabs
     j-w .. j+w (periodic in z). Searching that window matches every particle by ID --
-    nothing dropped -- with only 2w+1 slabs resident. Anything still unmatched moved
-    more than w slab-thicknesses, which is itself the headline result.
+    nothing dropped -- with only 2w+1 slabs resident.
+
+    The window bounds |dz| ONLY, not |dr|: slabs are cut along z, so a particle that
+    moves far in x/y but little in z still lands in the window and its full 3-D |dr|
+    is measured exactly (that is how a max above w*4.3 can be reported). What the
+    window cannot see is |dz| > w*4.3 -- those are counted as `unmatched`, never as a
+    distance. Motion is close to isotropic, so a large |dr| usually implies a large
+    |dz| (~|dr|/sqrt(3)) and does get caught; still, the measured tail is incomplete
+    whenever unmatched > 0, and the fix is a larger --window.
     """
-    acc, cache, unmatched = Accum(), {}, 0
+    acc, cache, unmatched = Accum(save_above), {}, 0
     every = max(1, len(fa) // 25)          # ~25 progress lines over a full snapshot
     nb = len(fb)
     for j in range(len(fa)):
@@ -134,15 +177,19 @@ def run_window(fa, fb, w, box):
         acc.add(np.sqrt((minimal_image(xa[found] - xb[found], box) ** 2).sum(1)),
                 ia[found], xa[found])
         if (j + 1) % every == 0 or j == len(fa) - 1:
-            print("  %d/%d subfiles, %d compared, %d unmatched"
-                  % (j + 1, len(fa), acc.n, unmatched), flush=True)
+            print("  %d/%d subfiles, %d compared, %d unmatched (>%.1f)"
+                  % (j + 1, len(fa), acc.n, unmatched, w * 4.3))
+            print(acc.brief(w * 4.3), flush=True)
 
     if unmatched:
-        print("\n!! %d particles (%.6f%%) were not found within +-%d slabs, i.e. they moved\n"
-              "   more than ~%.1f cMpc/h. Re-run with a larger --window to measure them."
+        print("\n!! %d particles (%.6f%%) were not found within +-%d slabs, i.e. their\n"
+              "   Z-DISPLACEMENT |dz| exceeds ~%.1f cMpc/h (the window bounds |dz|, not |dr|).\n"
+              "   Their |dr| is unmeasured, so the tail below is incomplete -- re-run with a\n"
+              "   larger --window to measure them."
               % (unmatched, 100.0 * unmatched / (acc.n + unmatched), w, w * 4.3))
     else:
-        print("\nevery particle was matched within +-%d slabs -- no unmeasured tail." % w)
+        print("\nevery particle was matched within +-%d slabs (|dz| <= %.1f) -- no unmeasured tail."
+              % (w, w * 4.3))
     return acc, box
 
 
@@ -155,6 +202,9 @@ def main():
     ap.add_argument("--window", type=int, default=3,
                     help="search +-W of B's slabs (W*4.3 cMpc/h of reach); raise if any unmatched")
     ap.add_argument("--max-sub", type=int, default=None, help="limit #subfiles (testing only)")
+    ap.add_argument("--save-movers", type=float, default=None, metavar="DR",
+                    help="save every particle with |dr| > DR cMpc/h (indx,dr,x,y,z) to --movers-out")
+    ap.add_argument("--movers-out", default="movers.npy", help="path for --save-movers output")
     args = ap.parse_args()
 
     fa = subfiles(args.dir_a, args.prefix, args.step)
@@ -176,8 +226,10 @@ def main():
     print("scanning %d subfile pairs of %s.%05d (window +-%d) ...\n"
           % (len(fa), args.prefix, args.step, args.window), flush=True)
 
-    acc, box = run_window(fa, fb, args.window, box)
+    acc, box = run_window(fa, fb, args.window, box, args.save_movers)
     acc.report(box)
+    if args.save_movers is not None:
+        acc.save_movers(args.movers_out, box)
 
 
 if __name__ == "__main__":
