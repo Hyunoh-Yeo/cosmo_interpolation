@@ -102,7 +102,7 @@ def run_window(fa, fb, w, box):
     more than w slab-thicknesses, which is itself the headline result.
     """
     acc, cache, unmatched = Accum(), {}, 0
-    every = max(1, len(fa) // 10)
+    every = max(1, len(fa) // 25)          # ~25 progress lines over a full snapshot
     nb = len(fb)
     for j in range(len(fa)):
         # the box is periodic in z, so slab 0 and slab nb-1 are neighbours

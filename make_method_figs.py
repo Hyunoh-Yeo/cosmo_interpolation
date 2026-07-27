@@ -62,8 +62,8 @@ print("saved methods_concept.png")
 
 # ---------- 2) results bar chart (mock accuracy) ----------
 methods = ["linear", "quadratic", "rbf", "GP"]
-offgrid = [0.90, 0.36, 0.14, 0.46]        # median pos err cMpc/h
-loo = [0.030, 0.16, 0.0028, 0.0093]
+offgrid = [0.590, 0.228, 0.072, 0.270]    # median pos err cMpc/h (n=48, scipy)
+loo = [0.031, 0.080, 0.0008, 0.014]
 
 fig, ax = plt.subplots(figsize=(8, 4.4))
 x = np.arange(len(methods))
