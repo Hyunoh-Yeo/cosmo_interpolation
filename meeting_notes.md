@@ -31,18 +31,24 @@ which is what the earlier single-subfile measurement did wrong.
 
 ### Result: opposite extremes depending on direction
 
-| comparison | median | >5 Mpc | >10 Mpc | max | N |
-|------------|--------|--------|---------|-----|---|
-| **same Ωm** (0.26, only w0/wa differ) | 0.032 | 0 | **0** | 2.92 | 275 M |
-| same Ωm, full scan (150/250 done) | — | — | **0 unmatched** | — | **5.15 B** |
-| **different Ωm** (0.21 vs 0.36) | **2.51** | 4.1% | **8,640** | 13.96+ | 263 M |
+| comparison | median | >5 Mpc | >10 Mpc | max | N | unmatched |
+|------------|--------|--------|---------|-----|---|-----------|
+| **same Ωm** (0.26, only w0/wa differ) — **FULL BOX** | **0.0302** | **4** | **0** | **5.52** | **8.59 B** | **0** |
+| **different Ωm** (0.21 vs 0.36) — smoke, 8/250 | **2.51** | 4.1% | 8,640 | 13.96+ | 263 M | 4.2% |
 
-- **Same Ωm**: particles move ~**1/16 of the interparticle spacing** (0.5 cMpc/h). Nothing
-  exceeds 10 cMpc/h — and over 5.15 B particles in the full scan, nothing even exceeds
-  12.9. The premise holds cleanly, with a ≥3.4× margin on the 10 cMpc/h reference.
-- **Different Ωm** (corner to corner): median is **5× the spacing**, and 8,640 particles
-  exceed 10 cMpc/h. The premise **weakens along this axis**.
-- Median differs by **79×** between the two cases. That gap is the result.
+- **The same-Ωm scan is complete and lossless.** 8,589,934,592 particles compared — exactly
+  2048³, i.e. **every particle in the box**: none dropped at slab boundaries, none outside
+  the search window. Median motion is **1/16.5 of the interparticle spacing**; only
+  **4 particles in the entire box** exceed 5 cMpc/h and **none exceeds 10**. Even the single
+  worst particle (5.52) is 1.8× under the criterion.
+- **Different Ωm** (corner to corner): median is **5× the spacing** — **83× larger** than the
+  same-Ωm median. The premise **weakens sharply along this axis**.
+
+### No periodic-boundary bug
+The 8-subfile smoke made the top movers look piled up near coordinate 0. That was its
+truncated z-range (0–34 of 1024), not a wrap error: in the full scan the largest movers are
+spread through the box — (685, 1013, 264), (910, 418, 71), (294, 821, 963), (529, 234, 946),
+(78, 290, 60), (559, 220, 833) — with no edge preference.
 
 ### Why — the growth difference
 Different Ωm ⇒ different amount of structure growth by z=0 ⇒ particles systematically
@@ -50,9 +56,8 @@ rearrange. Changing w0/wa is negligible by comparison, because dark energy only 
 
 ### Sensitive locations are real and clustered
 **[figure: movers_compare.png]** The biggest movers are not scattered — they **concentrate
-on specific halos**:
-- same Ωm: 6 of the top 20 sit within one 20 cMpc/h cell at ≈(53, 649, 33)
-- different Ωm: 8 of the top 20 within one cell at ≈(3, 982, 9)
+on specific halos**. In the full same-Ωm scan, 6 of the top 20 sit within ~1 cMpc/h of
+(685.3, 1013.3, 263.9), with two more pairs at (294, 821, 963) and (910, 418, 71).
 
 This matches the expectation discussed last time: most particles stay put, while a few
 dense spots are genuinely cosmology-sensitive.
@@ -97,12 +102,18 @@ error [cMpc/h]:
 - ✅ First real-data P(k) via pypower (shot noise matches V/N exactly)
 - ✅ Parameter-space analysis
 
-## 6. Next steps
-1. **Adjacent-Ωm |Δr|** (0.21 ↔ 0.26) — the real interpolation difficulty
-2. Different-Ωm full scan with a **wider window**, to get the true max and complete tail
-3. Re-measure |Δr| **after growth-factor normalization** — how much does it shrink?
-4. Apply the interpolators to real snapshots (SyncINITIAL grid, aligned by `indx`)
-5. Evaluate interpolation accuracy via the **P(k) ratio**
+## 6. Next (action items from this meeting)
+1. **Interpolate varying Ωm only** — the hard axis, and the cleanest first test
+2. **Does |Δr| scale smoothly with ΔΩm?** measure adjacent (0.05) and mid (0.10) spacings.
+   Large motion is fine for interpolation *if* it is smooth; that is the real question.
+3. **Different-Ωm full scan** with a wider window — true max and complete tail
+4. **Parallelize**: slabs are independent, so this maps cleanly onto MPI/multi-process.
+   Currently single-core, ~12 h per pair, and running on the **login node** — should move
+   to SLURM.
+5. Re-measure |Δr| **after growth-factor normalization** — how much does it shrink?
+6. Are the clustered mover regions special (halo? void?), and is the **direction** of
+   motion there systematic? Diagnostics now available via `--stats-out`.
+7. Evaluate interpolation accuracy via the **P(k) ratio**
 
 ---
 
@@ -118,12 +129,10 @@ error [cMpc/h]:
 6. **slabs_compare.png** — two cosmologies look structurally similar
 
 ## ⚠️ Be honest about
-- **Different-Ωm is a smoke test (8 of 250 subfiles).** Distribution centre (median, 90%,
-  99%) is reliable over 263 M particles, but the **max and tail are underestimates**, and
-  the mover positions only cover z = 0–34 cMpc/h (3% of the box).
-- **Same-Ωm full scan is at 150/250**, still 0 unmatched over 5.15 B particles.
-- **Different-Ωm is corner-to-corner** (ΔΩm = 0.15); actual interpolation is adjacent (0.05).
+- **Different-Ωm is still a smoke test (8 of 250 subfiles).** Its median is reliable over
+  263 M particles, but the **max and tail are underestimates**, and its mover positions only
+  cover z = 0–34 cMpc/h (3% of the box) — which is what made them look piled up at 0.
 - **The matching window bounds |Δz|, not |Δr|** — slabs are cut along z, so large x/y motion
-  is still measured exactly, and only |Δz| > 12.9 goes unmatched. 4.2% went unmatched in the
-  different-Ωm smoke, so that tail is **incomplete**; the same-Ωm run has 0 unmatched and is
-  complete. Fix is a wider window.
+  is measured exactly and only |Δz| > w×4.3 goes unmatched. The same-Ωm full scan has
+  **0 unmatched**, so its tail is complete; the different-Ωm smoke lost 4.2% and is not.
+- **Different-Ωm is corner-to-corner** (ΔΩm = 0.15); actual interpolation is adjacent (0.05).

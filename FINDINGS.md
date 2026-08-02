@@ -163,7 +163,39 @@ rec = np.fromfile(f, dtype=REC)     # after seeking past the header; slices the 
 
 ## 5b. Validations
 
-### Shared-IC assumption — holds strongly at z=0, unbiased (2026-07)
+### Shared-IC assumption — CONFIRMED at z=0, complete box, zero loss (2026-07-27)
+
+**The full scan finished: 8,589,934,592 particles compared = exactly 2048³, with
+`0 unmatched`.** Every particle in the box was matched by Lagrangian ID; nothing was
+dropped at a slab boundary and nothing fell outside the search window. This is the
+definitive version of the measurement below.
+
+Pair: Ωm = 0.26, (−1.2, −0.8) vs (−1.0, −1.6), z = 0 (`SyncINITIAL.01881`), window ±3.
+
+| statistic | value |
+|-----------|-------|
+| median \|Δr\| | **0.0302** (1/16.5 of the 0.5 interparticle spacing) |
+| 99.9% / 99.99% | 0.182 / 0.417 |
+| **max** | **5.52** |
+| > 1 cMpc/h | 43,361 (0.0005%) |
+| > 5 cMpc/h | **4 particles** (5e-8 %) |
+| **> 10 cMpc/h** | **0** |
+
+⇒ Along (w0, wa) the premise holds with a **1.8× margin even on the single worst
+particle**, and by a factor ~330 on the median.
+
+**No periodic-boundary problem.** The 8-subfile smoke made the top movers look piled
+up near coordinate 0; that was purely its truncated z-range (0–34 of 1024). In the full
+scan the largest movers are spread through the box — (685, 1013, 264), (910, 418, 71),
+(294, 821, 963), (529, 234, 946), (78, 290, 60), (559, 220, 833) — with no edge
+preference.
+
+**Sensitive locations are clustered on halos**: 6 of the top 20 sit within ~1 cMpc/h of
+(685.3, 1013.3, 263.9); two more pairs at (294, 821, 963) and (910, 418, 71). So the
+premise holds globally while a handful of collapsed structures are mildly
+cosmology-sensitive — exactly the "대부분 비슷한데 특정 위치만 민감" picture.
+
+### (superseded) first unbiased partial result
 Do the same particle IDs sit at (nearly) the same place across cosmologies? Yes, by a
 wide margin. The earlier "CONFIRMED" was on a biased measurement (matching *within one
 subfile*, which drops the boundary-crossing big movers, §3) — so its max was a lower
