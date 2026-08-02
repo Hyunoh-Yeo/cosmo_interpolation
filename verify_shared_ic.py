@@ -160,9 +160,14 @@ class Accum:
             print("   %14d %10.4f   (%7.2f, %7.2f, %7.2f)"
                   % (self.top_id[j], self.top_dr[j], *self.top_pos[j]))
 
-    def save_stats(self, path, box):
-        """Dump the full histogram + per-slab + per-axis stats for later plotting."""
+    def save_stats(self, path, box, unmatched=0):
+        """Dump every accumulator to .npz.
+
+        This is also the unit of parallelism: each worker writes one of these for its
+        slab range and merge_stats.py adds them up. Every field is a plain sum or a
+        top-N merge, so the merged result is bit-identical to a single-process run."""
         np.savez(path, bins=BINS, hist=self.hist, n=self.n, box=box,
+                 unmatched=unmatched,
                  slab=np.array(self.slab, float) if self.slab else np.zeros((0, 4)),
                  d_sum=self.d_sum, d_sq=self.d_sq,
                  thresholds=np.array(THRESHOLDS),
@@ -171,7 +176,7 @@ class Accum:
         print("\nsaved full histogram + slab/axis stats -> %s" % path)
 
 
-def run_window(fa, fb, w, box, save_above=None):
+def run_window(fa, fb, w, box, save_above=None, ja=0, jb=None):
     """Unbiased full-box scan by particle identity.
 
     Multiverse subfiles are Eulerian z-slabs (grouped by present-day position), so a
@@ -188,11 +193,18 @@ def run_window(fa, fb, w, box, save_above=None):
     distance. Motion is close to isotropic, so a large |dr| usually implies a large
     |dz| (~|dr|/sqrt(3)) and does get caught; still, the measured tail is incomplete
     whenever unmatched > 0, and the fix is a larger --window.
+
+    [ja, jb) restricts which of A's slabs this call handles -- the unit of parallelism.
+    Only A is partitioned; B is still indexed over the full periodic range, so each
+    worker sees exactly the window it would have seen in a single-process run and the
+    partition introduces no boundary artefacts.
     """
     acc, cache, unmatched = Accum(save_above), {}, 0
-    every = max(1, len(fa) // 25)          # ~25 progress lines over a full snapshot
+    jb = len(fa) if jb is None else min(jb, len(fa))
+    ntot = jb - ja
+    every = max(1, ntot // 25)             # ~25 progress lines over the assigned range
     nb = len(fb)
-    for j in range(len(fa)):
+    for j in range(ja, jb):
         # the box is periodic in z, so slab 0 and slab nb-1 are neighbours
         win = [(j + d) % nb for d in range(-w, w + 1)]
         for m in win:
@@ -222,9 +234,9 @@ def run_window(fa, fb, w, box, save_above=None):
         dvec = minimal_image(xa[found] - xb[found], box)
         acc.add(np.sqrt((dvec ** 2).sum(1)), ia[found], xa[found],
                 dvec=dvec, slab_j=j)
-        if (j + 1) % every == 0 or j == len(fa) - 1:
-            print("  %d/%d subfiles, %d compared, %d unmatched (>%.1f)"
-                  % (j + 1, len(fa), acc.n, unmatched, w * 4.3))
+        if (j - ja + 1) % every == 0 or j == jb - 1:
+            print("  %d/%d subfiles, %d compared, %d unmatched (|dz|>%.1f)"
+                  % (j - ja + 1, ntot, acc.n, unmatched, w * 4.3))
             print(acc.brief(w * 4.3), flush=True)
 
     if unmatched:
@@ -236,7 +248,7 @@ def run_window(fa, fb, w, box, save_above=None):
     else:
         print("\nevery particle was matched within +-%d slabs (|dz| <= %.1f) -- no unmeasured tail."
               % (w, w * 4.3))
-    return acc, box
+    return acc, box, unmatched
 
 
 def main():
@@ -248,6 +260,9 @@ def main():
     ap.add_argument("--window", type=int, default=3,
                     help="search +-W of B's slabs (W*4.3 cMpc/h of reach); raise if any unmatched")
     ap.add_argument("--max-sub", type=int, default=None, help="limit #subfiles (testing only)")
+    ap.add_argument("--sub-range", default=None, metavar="START:END",
+                    help="handle only A's subfiles [START,END) -- one parallel worker's "
+                         "share; combine the --stats-out files with merge_stats.py")
     ap.add_argument("--save-movers", type=float, default=None, metavar="DR",
                     help="save every particle with |dr| > DR cMpc/h (indx,dr,x,y,z) to --movers-out")
     ap.add_argument("--movers-out", default="movers.npy", help="path for --save-movers output")
@@ -271,15 +286,22 @@ def main():
           hb.get("w0 of DE (CPL)"), hb.get("wa of DE (CPL)"), zb))
     if abs(za - zb) > 1e-3:
         print("!! redshifts differ -- part of any |dr| is growth, not cosmology")
-    print("scanning %d subfile pairs of %s.%05d (window +-%d) ...\n"
-          % (len(fa), args.prefix, args.step, args.window), flush=True)
 
-    acc, box = run_window(fa, fb, args.window, box, args.save_movers)
+    ja, jb = 0, len(fa)
+    if args.sub_range:
+        ja, jb = (int(v) for v in args.sub_range.split(":"))
+        jb = min(jb, len(fa))
+        if not 0 <= ja < jb:
+            raise SystemExit("bad --sub-range %s (have %d subfiles)" % (args.sub_range, len(fa)))
+    print("scanning A subfiles [%d,%d) of %d, %s.%05d (window +-%d) ...\n"
+          % (ja, jb, len(fa), args.prefix, args.step, args.window), flush=True)
+
+    acc, box, unmatched = run_window(fa, fb, args.window, box, args.save_movers, ja, jb)
     acc.report(box)
     if args.save_movers is not None:
         acc.save_movers(args.movers_out, box)
     if args.stats_out:
-        acc.save_stats(args.stats_out, box)
+        acc.save_stats(args.stats_out, box, unmatched)
 
 
 if __name__ == "__main__":
