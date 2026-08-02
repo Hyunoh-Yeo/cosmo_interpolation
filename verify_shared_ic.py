@@ -59,12 +59,23 @@ class Accum:
         self.top_pos = np.zeros((0, 3), np.float32)
         self.save_above = save_above
         self.mv_dr, self.mv_id, self.mv_pos = [], [], []      # movers above threshold
+        # per-axis displacement sums -> is the motion isotropic or directional?
+        self.d_sum = np.zeros(3)          # sum of signed dx, dy, dz
+        self.d_sq = np.zeros(3)           # sum of dx^2, dy^2, dz^2
+        self.slab = []                    # (j, n, median, max) per A-slab, for PBC checks
 
-    def add(self, dr, ids, pos):
+    def add(self, dr, ids, pos, dvec=None, slab_j=None):
         self.n += dr.size
         self.hist += np.histogram(dr, bins=BINS)[0]
         for t in THRESHOLDS:
             self.over[t] += int((dr > t).sum())
+        if dvec is not None and dvec.size:
+            self.d_sum += dvec.sum(0)
+            self.d_sq += (dvec.astype(np.float64) ** 2).sum(0)
+        if slab_j is not None:
+            self.slab.append((slab_j, dr.size,
+                              float(np.median(dr)) if dr.size else np.nan,
+                              float(dr.max()) if dr.size else np.nan))
         if self.save_above is not None:
             m = dr > self.save_above
             if m.any():
@@ -119,11 +130,45 @@ class Accum:
         for t in THRESHOLDS:
             n = self.over[t]
             print("   > %5.1f cMpc/h : %12d  (%.8f%%)" % (t, n, 100.0 * n / max(self.n, 1)))
+        # --- is the motion directional, or isotropic? ---
+        if self.n and self.d_sq.any():
+            mean = self.d_sum / self.n
+            rms = np.sqrt(self.d_sq / self.n)
+            print("\nper-axis displacement [cMpc/h]   (isotropic => the three rms agree,")
+            print("                                   and each mean ~ 0)")
+            for k, ax in enumerate("xyz"):
+                print("   d%s : mean %+9.5f   rms %8.4f" % (ax, mean[k], rms[k]))
+            print("   rms spread across axes: %.2f%%   (large => motion has a preferred axis)"
+                  % (100.0 * (rms.max() - rms.min()) / max(rms.mean(), 1e-12)))
+
+        # --- do the first/last slabs behave like the interior? (periodic-boundary check) ---
+        if len(self.slab) > 6:
+            s = np.array(self.slab, float)
+            edge = np.concatenate([s[:3], s[-3:]])
+            mid = s[len(s) // 2 - 2: len(s) // 2 + 3]
+            print("\nslab check (median |dr| per A-slab)   edge vs interior:")
+            print("   first/last 3 slabs : %s" % np.round(edge[:, 2], 4).tolist())
+            print("   middle 5 slabs     : %s" % np.round(mid[:, 2], 4).tolist())
+            r = edge[:, 2].mean() / max(mid[:, 2].mean(), 1e-12)
+            print("   edge/interior ratio: %.3f   (~1 => periodic wrap is handled correctly)" % r)
+            j_worst = int(s[np.argmax(s[:, 3]), 0])
+            print("   slab with the largest single |dr|: %d of %d" % (j_worst, len(s)))
+
         print("\n%d largest movers -- the 'sensitive locations':" % self.top_dr.size)
         print("   %14s %10s %28s" % ("indx", "|dr|", "position in A [cMpc/h]"))
         for j in np.argsort(self.top_dr)[::-1]:
             print("   %14d %10.4f   (%7.2f, %7.2f, %7.2f)"
                   % (self.top_id[j], self.top_dr[j], *self.top_pos[j]))
+
+    def save_stats(self, path, box):
+        """Dump the full histogram + per-slab + per-axis stats for later plotting."""
+        np.savez(path, bins=BINS, hist=self.hist, n=self.n, box=box,
+                 slab=np.array(self.slab, float) if self.slab else np.zeros((0, 4)),
+                 d_sum=self.d_sum, d_sq=self.d_sq,
+                 thresholds=np.array(THRESHOLDS),
+                 over=np.array([self.over[t] for t in THRESHOLDS], float),
+                 top_dr=self.top_dr, top_id=self.top_id.astype(float), top_pos=self.top_pos)
+        print("\nsaved full histogram + slab/axis stats -> %s" % path)
 
 
 def run_window(fa, fb, w, box, save_above=None):
@@ -174,8 +219,9 @@ def run_window(fa, fb, w, box, save_above=None):
                 break
         found = ~todo
         unmatched += int(todo.sum())
-        acc.add(np.sqrt((minimal_image(xa[found] - xb[found], box) ** 2).sum(1)),
-                ia[found], xa[found])
+        dvec = minimal_image(xa[found] - xb[found], box)
+        acc.add(np.sqrt((dvec ** 2).sum(1)), ia[found], xa[found],
+                dvec=dvec, slab_j=j)
         if (j + 1) % every == 0 or j == len(fa) - 1:
             print("  %d/%d subfiles, %d compared, %d unmatched (>%.1f)"
                   % (j + 1, len(fa), acc.n, unmatched, w * 4.3))
@@ -205,6 +251,8 @@ def main():
     ap.add_argument("--save-movers", type=float, default=None, metavar="DR",
                     help="save every particle with |dr| > DR cMpc/h (indx,dr,x,y,z) to --movers-out")
     ap.add_argument("--movers-out", default="movers.npy", help="path for --save-movers output")
+    ap.add_argument("--stats-out", default=None, metavar="NPZ",
+                    help="dump full |dr| histogram + per-slab + per-axis stats here")
     args = ap.parse_args()
 
     fa = subfiles(args.dir_a, args.prefix, args.step)
@@ -230,6 +278,8 @@ def main():
     acc.report(box)
     if args.save_movers is not None:
         acc.save_movers(args.movers_out, box)
+    if args.stats_out:
+        acc.save_stats(args.stats_out, box)
 
 
 if __name__ == "__main__":
