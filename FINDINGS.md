@@ -163,6 +163,52 @@ rec = np.fromfile(f, dtype=REC)     # after seeking past the header; slices the 
 
 ## 5b. Validations
 
+### Four full-box scans — what actually drives particle displacement (2026-07-27)
+
+All four are complete-box scans at z=0 (`SyncINITIAL.01881`, window ±3): 8.59 G
+particles each, `unmatched` at most 35 (4e-9 of the box), so every tail is complete.
+
+| scan | what differs | median | 99.99% | max | >10 cMpc/h | ΔD/D |
+|------|--------------|--------|--------|-----|------------|------|
+| `ic_z0` | w0,wa: (−1.2,−0.8) vs (−1.0,−1.6), Ωm 0.26 | **0.030** | 0.417 | 5.52 | **0** | **−0.28 %** |
+| `om21_w0scan` | w0 only: −1.0 vs −1.4, Ωm 0.21 | **1.047** | 5.25 | 9.96 | **0** | 10.39 % |
+| `om21v36_lcdm` | Ωm: 0.21 vs 0.36, w0=−1 | **2.512** | 9.55 | 19.87 | 443,621 | 14.05 % |
+| `om21v36_w14` | Ωm: 0.21 vs 0.36, w0=−1.4 | **2.754** | 9.55 | 18.85 | 206,962 | 9.87 % |
+
+ΔD/D is the difference in linear growth from z=47 to z=0 between the two cosmologies
+(cosmoprimo/CAMB). Two things fall out, and they change how the project should proceed.
+
+**1. The (w0, wa) axis is NOT intrinsically safe — `ic_z0`'s pair is nearly degenerate.**
+Its two cosmologies differ by Δw0=+0.2, Δwa=−0.8, which in CPL (`w(a)=w0+wa(1−a)`) cross
+at a≈0.75, so their expansion histories almost coincide: **ΔD/D = 0.28 %**. That, not the
+choice of parameter, is why its median is 0.030. Change w0 alone by 0.4 and the median
+jumps 35× to 1.047. The earlier "w0/wa is easy" reading was an artefact of that one pair.
+
+**2. Dark-energy displacement obeys a clean scaling; Ωm does not.**
+Normalising by the growth difference:
+
+| | \|Δr\|median / (ΔD/D in %) |
+|--|--------------------------|
+| `ic_z0` (w0,wa) | **0.108** |
+| `om21_w0scan` (w0) | **0.101** |
+| `om21v36_lcdm` (Ωm) | 0.179 |
+| `om21v36_w14` (Ωm) | 0.279 |
+
+The two dark-energy runs agree to 7 % **across a 35× range in displacement** — i.e. along
+w0/wa, displacement is simply proportional to the growth difference. The Ωm runs are
+1.8–2.8× above that line, and are *inconsistent with each other*: their growth differences
+are 14.1 % vs 9.9 % yet their medians are nearly equal (2.51 vs 2.75), so along Ωm the
+displacement tracks **ΔΩm itself, not ΔD**.
+
+**Interpretation**: dark energy only rescales the growth amplitude, so a growth-factor
+normalisation absorbs it entirely. Ωm additionally changes the **shape** of the initial
+power spectrum (the turnover k_eq ∝ Ωm·h) and the IC amplitude (§5b, σ8 spread 8.5 %
+across Ωm), so the field is not merely rescaled — it is reshaped, and particles rearrange
+by more than growth alone predicts.
+
+⇒ **Growth normalisation should fully solve the w0/wa direction and only partly the Ωm
+direction.** That is a concrete, testable prediction and the next thing to measure.
+
 ### Shared-IC assumption — CONFIRMED at z=0, complete box, zero loss (2026-07-27)
 
 **The full scan finished: 8,589,934,592 particles compared = exactly 2048³, with
