@@ -1,204 +1,164 @@
-# Meeting notes — 2026-07-27
+# Multiverse per-particle interpolation — status
 
-## 🎯 One-line takeaway
-> **The Ωm axis is interpolatable.** At the spacing we actually interpolate over
-> (ΔΩm = 0.05), only **41 particles out of 8.59 billion** exceed 10 cMpc/h, and the
-> displacement field is **coherent** — successive Ωm steps add up (94 % of the linear
-> sum) instead of scattering (which would have given 1.93 instead of 2.51). The earlier
-> alarming numbers were all corner-to-corner (ΔΩm = 0.15), a case interpolation never
-> has to handle.
->
-> Underlying mechanism, from six full-box scans: displacement is **proportional to the
-> linear growth difference for dark energy** (two runs agree to 7 % across a 35× range),
-> while Ωm moves particles 1.8–2.8× further than that law — because Ωm reshapes the
-> initial power spectrum rather than only rescaling it.
+**The verification phase is complete.** Six complete-box scans at z=0 (8.59 G particles
+each) settle whether the shared-IC premise supports per-particle interpolation. It does —
+and the measurements also say *why*, which shapes how the interpolation should be built.
 
 ---
 
-## 1. Parameter space — what we have, what we predict
-**[figure: w0wa_grid.png]**
+## 1. The premise, and how it was tested
 
-- 50 cosmologies scattered over (w0, wa) as an **irregular grid** (Ωm = 0.21/0.26/0.31/0.36,
-  11–13 points each) → not a regular grid → needs **scattered-data interpolation** (RBF/GP).
-- Most (w0, wa) positions carry all four Ωm values, so the grid has clean Ωm "columns".
-- **[param_space.png]** the IC amplitude (σ8 at z=47) is set by **Ωm alone** — (w0, wa) shift
-  it by only ~0.1%. By z=47 dark energy has not acted yet, so all (w0, wa) signal lives in
-  the post-z=47 growth.
-- The **s9 variant uses a different σ8 convention → excluded from the grid.**
+All Multiverse runs start from identical initial conditions, so a given `indx` is the same
+Lagrangian particle in every cosmology. Interpolating across cosmologies only makes sense
+if that particle stays in roughly the same place. The criterion from last meeting: **does
+anything move more than 10 cMpc/h by z=0?**
+
+**Method.** Match by `indx` between two cosmologies at z=0 and measure |Δr|. Subfiles are
+Eulerian z-slabs, so a particle sits in *different* subfiles in the two runs; matching
+within one subfile silently drops the boundary-crossers — exactly the biggest movers,
+which is what the first attempt did. The scan instead searches A's slab j against B's
+slabs j±w (periodic in z), so nothing is dropped. Every scan below covers
+**8,589,934,592 particles = 2048³ = the entire box**, with ≤35 unmatched (4e-9).
 
 ---
 
-## 2. Shared-IC verification — is the same particle really in ~the same place? ★KEY★
-**[figure: shared_ic_dr.png]**
-
-**Method**: match the same Lagrangian ID (`indx`) between two cosmologies at z=0 and measure
-the position difference |Δr|. Scan is unbiased — particles are matched by identity across
-neighbouring z-slabs, so boundary-crossers (the biggest movers) are not silently dropped,
-which is what the earlier single-subfile measurement did wrong.
-
-### The decisive test: the ΔΩm ladder
-**[figure: om_ladder.png]** Three full-box scans at w0=−1, wa=0:
+## 2. Result: the Ωm axis is interpolatable
+**[om_ladder.png]**
 
 | ΔΩm | pair | median | max | >10 cMpc/h |
 |-----|------|--------|-----|------------|
-| **0.05** (the real grid spacing) | 0.21→0.26 | **1.097** | 12.65 | **41** (4.8e-9) |
+| **0.05** — the real grid spacing | 0.21→0.26 | **1.097** | 12.65 | **41** (4.8e-9) |
 | 0.10 | 0.26→0.36 | 1.585 | 19.03 | 129,853 |
-| 0.15 (corner to corner) | 0.21→0.36 | 2.512 | 19.87 | 443,621 |
+| 0.15 — corner to corner | 0.21→0.36 | 2.512 | 19.87 | 443,621 |
 
-1. **At ΔΩm = 0.05 only 41 particles in 8.59 G exceed 10 cMpc/h.** Every alarming number
-   so far came from the corner-to-corner case, which interpolation never faces.
-2. **The steps add, they do not scatter.** 0.15 is the composition of the other two:
-   uncorrelated steps would give the quadrature sum 1.93, fully coherent steps the linear
-   sum 2.68 — measured **2.51, i.e. 94 % of the linear sum.** The displacement field is
-   coherent, which is precisely what makes it fittable.
-3. **Mildly sublinear, no saturation**: |Δr| ∝ ΔΩm^0.75.
+**(a) At the spacing interpolation actually uses, the criterion is met by ~8 orders of
+magnitude** — 41 particles out of 8.59 billion. Every alarming number so far came from the
+corner-to-corner case, which interpolation never has to handle.
 
-⇒ Ωm is hard in *magnitude* but well-behaved in *structure*. Large motion was never the
-problem; unpredictable motion would have been, and it is not unpredictable.
+**(b) The displacement field is coherent, not chaotic.** The 0.15 step is the composition
+of the other two, which turns it into a test:
 
-### The mechanism — six complete-box scans
-**[figure: dr_scaling.png]** All four are full-box (8.59 G particles each, `unmatched` ≤ 35,
-i.e. 4e-9 of the box), so every tail is complete.
+| | median \|Δr\| |
+|--|-------------|
+| 0.21→0.26 | 1.097 |
+| 0.26→0.36 | 1.585 |
+| quadrature sum — what *uncorrelated* steps would give | 1.927 |
+| linear sum — what *fully coherent* steps would give | 2.681 |
+| **measured 0.21→0.36** | **2.512** |
 
-| scan | what differs | median | max | >10 cMpc/h | ΔD/D |
-|------|--------------|--------|-----|------------|------|
-| w0,wa: (−1.2,−0.8) vs (−1.0,−1.6), Ωm 0.26 | dark energy | **0.030** | 5.52 | **0** | **−0.28%** |
-| w0 only: −1.0 vs −1.4, Ωm 0.21 | dark energy | **1.047** | 9.96 | **0** | 10.39% |
-| Ωm: 0.21 vs 0.36, w0=−1 | **Ωm** | **2.512** | 19.87 | 443,621 | 14.05% |
-| Ωm: 0.21 vs 0.36, w0=−1.4 | **Ωm** | **2.754** | 18.85 | 206,962 | 9.87% |
+**94 % of the linear sum.** Particles keep being pushed the same way as Ωm increases. This
+is the result that matters: large motion was never the risk — *unpredictable* motion would
+have been, and the motion is not unpredictable.
 
-ΔD/D = difference in linear growth from z=47 to z=0 (cosmoprimo/CAMB).
-
-**⚠️ Correction to what I said last time.** The first pair is **nearly degenerate**: its
-Δw0=+0.2, Δwa=−0.8 cross at a≈0.75 in CPL, so the two expansion histories almost coincide
-(ΔD/D = 0.28%). That, not "dark energy is harmless", is why its median is 0.030. Change w0
-alone by 0.4 and the median jumps **35×**. So the axis labels matter less than the growth
-difference.
-
-**The real structure — dark energy follows a clean law, Ωm does not:**
-
-| | median \|Δr\| per 1% of ΔD/D |
-|--|---------------------------|
-| w0,wa (degenerate pair) | **0.108** |
-| w0 only | **0.101** |
-| Ωm (w0=−1) | 0.179 |
-| Ωm (w0=−1.4) | 0.279 |
-
-- The two dark-energy runs agree to **7% across a 35× range in displacement** — along
-  w0/wa, displacement is simply **proportional to the growth difference**.
-- The Ωm runs sit **1.8–2.8× above** that line, and disagree with each other: their growth
-  differences are 14.1% vs 9.9% yet their medians are nearly equal (2.51 vs 2.75). Along Ωm
-  the displacement tracks **ΔΩm itself, not ΔD**.
-
-**Why**: dark energy only rescales the growth amplitude, so growth normalization absorbs it
-entirely. Ωm additionally changes the **shape** of the initial power spectrum (k_eq ∝ Ωm·h)
-and the IC amplitude (σ8 spread 8.5% across Ωm). The field is not rescaled — it is reshaped.
-
-⇒ **Prediction: growth normalization should fully fix the w0/wa direction and only partly
-the Ωm direction.** That is the next thing to measure.
-
-### No periodic-boundary bug
-The 8-subfile smoke made the top movers look piled up near coordinate 0. That was its
-truncated z-range (0–34 of 1024), not a wrap error: in the full scan the largest movers are
-spread through the box — (685, 1013, 264), (910, 418, 71), (294, 821, 963), (529, 234, 946),
-(78, 290, 60), (559, 220, 833) — with no edge preference.
-
-### Sensitive locations are real and clustered
-**[figure: movers_compare.png]** The biggest movers are not scattered — they **concentrate
-on specific halos**. In the full same-Ωm scan, 6 of the top 20 sit within ~1 cMpc/h of
-(685.3, 1013.3, 263.9), with two more pairs at (294, 821, 963) and (910, 418, 71).
-
-This matches the expectation discussed last time: most particles stay put, while a few
-dense spots are genuinely cosmology-sensitive.
+**(c) Scaling is mildly sublinear with no saturation:** |Δr| ∝ ΔΩm^0.75.
 
 ---
 
-## 3. What this means for the project
+## 3. Mechanism: displacement is set by the growth difference — for dark energy only
+**[dr_scaling.png]**
 
-1. **The premise holds where it needs to.** At the real grid spacing the criterion is met
-   by ~8 orders of magnitude (41 particles in 8.59 G), and the displacement field is
-   coherent rather than chaotic. The verification phase can close.
-2. **Growth normalization is the right pre-processing step**, and we now know exactly what
-   it will and will not do: it should absorb the dark-energy direction entirely (|Δr| ∝ ΔD
-   there) and leave a coherent Ωm residual from the power-spectrum shape change.
-3. **Ωm is the axis that carries real signal** — w0/wa pairs can even be near-degenerate.
-   So the interpolator should be given room along Ωm, and the (w0, wa) grid can be judged
-   by growth difference rather than by parameter distance.
+| scan | what differs | median | max | >10 | ΔD/D | median per 1 % ΔD |
+|------|--------------|--------|-----|-----|------|-------------------|
+| (−1.2,−0.8) vs (−1.0,−1.6), Ωm 0.26 | dark energy | 0.030 | 5.52 | **0** | **−0.28 %** | **0.108** |
+| w0: −1.0 vs −1.4, Ωm 0.21 | dark energy | 1.047 | 9.96 | **0** | 10.39 % | **0.101** |
+| Ωm 0.21 vs 0.36, w0=−1 | Ωm | 2.512 | 19.87 | 443,621 | 14.05 % | 0.179 |
+| Ωm 0.21 vs 0.36, w0=−1.4 | Ωm | 2.754 | 18.85 | 206,962 | 9.87 % | 0.279 |
+
+ΔD/D = linear growth difference from z=47 to z=0 (cosmoprimo/CAMB).
+
+- **The two dark-energy runs agree to 7 % across a 35× range in displacement.** Along
+  w0/wa, |Δr| is simply proportional to the growth difference.
+- **The Ωm runs sit 1.8–2.8× above that line** and disagree with each other: growth
+  differences 14.1 % vs 9.9 %, yet medians 2.51 vs 2.75. There, displacement tracks
+  **ΔΩm itself, not ΔD**.
+
+**Why:** dark energy only rescales the growth *amplitude*, so a growth normalisation
+absorbs it. Ωm also changes the *shape* of the initial power spectrum (k_eq ∝ Ωm·h) and
+the IC amplitude (σ8 varies 8.5 % across Ωm). The field is reshaped, not rescaled.
+
+⇒ **Prediction to test:** growth normalisation should collapse the dark-energy direction
+to ~0 and leave a coherent Ωm residual.
+
+### ⚠️ Correction to the previous report
+I previously said "the w0/wa axis is safe". That rested on one pair which turns out to be
+**nearly degenerate**: Δw0=+0.2 and Δwa=−0.8 cross at a≈0.75 in CPL, so the two expansion
+histories almost coincide (ΔD/D = 0.28 %). Vary w0 alone by 0.4 and the median jumps 35×.
+The axis label was never the point — the growth difference is.
 
 ---
 
-## 4. Interpolation methods (mock validation)
-**[figure: methods_results.png]**
+## 4. Questions raised last meeting
 
-4 models on mock data (48³ particles × 36 cosmologies), median per-particle position
-error [cMpc/h]:
+| question | answer |
+|----------|--------|
+| **PBC bug? the movers piled up at 0** | **No bug.** That plot came from an 8-subfile smoke test, which can only see z = 0–34 (3 % of the box). Across the six full-box scans the top movers span z = 17–966 and x, y = 3–1014. **[movers_compare.png]** |
+| Full histogram, not just percentiles | `--stats-out` now dumps the complete \|Δr\| histogram |
+| Are the first/last slabs behaving? | per-slab median + edge/interior ratio: 1.030 and 0.872, within the natural slab-to-slab spread (0.94–1.20, 1.41–1.74) |
+| Is the motion directional? | per-axis rms recorded; spread across x/y/z is 6.1 % and 11.3 % — close to isotropic |
+| Are the clustered regions special? | movers repeat at the *same* halos across scans — (499.7, 703.3, 416.8) holds 9 of the top 20 in one scan, (685.3, 1013.3, 263.9) holds 6 in another. Whole structures shift together; individual particles do not scatter |
+| Distribute over CPUs / MPI | done — §5 |
+
+---
+
+## 5. Parallelisation
+
+Slabs are independent, so A's 250 subfiles split across workers with no communication
+needed; MPI would add dependencies without benefit. Each worker writes its own `.npz` and
+a merge step sums them — verified **bit-identical** to a single-process run (histogram,
+threshold counts, per-axis sums, top-20 and unmatched all match exactly).
+
+| | machine | processes | wall time |
+|--|---------|-----------|-----------|
+| before | login node | 1 | ~10 h |
+| after | compute node via SLURM | 16 | **48 min** |
+
+≈13×. Not a controlled benchmark — different cosmology pairs and different machines — but
+the practical effect is a pair per hour instead of per night, and the work is off the login
+node. Worker CPU sits at ~47 %, so the bottleneck is now GPFS I/O rather than cores;
+adding workers past ~16 would gain little.
+
+---
+
+## 6. Interpolation methods (mock validation so far)
+**[methods_results.png]** 48³ particles × 36 mock cosmologies, median position error [cMpc/h]:
 
 | | linear | quadratic | RBF | GP |
 |--|--------|-----------|-----|-----|
 | off-grid | 0.59 | 0.23 | **0.072** | 0.27 |
 | leave-one-out | 0.031 | 0.080 | **0.0008** | 0.014 |
 
-- **RBF beats linear by 8–40×.** GP is competitive and additionally returns an uncertainty
-  (0.02–0.04), useful for flagging where the grid is too sparse.
-- Quadratic helps off-grid but *hurts* at a held-out node — a global fit is not node-exact.
-- All standard libraries (scipy, GPyTorch); the GPU path tiles 2048³ with CuPy.
+RBF beats linear by 8–40×; GP is competitive and also returns an uncertainty (0.02–0.04),
+useful for flagging sparse regions of the grid. Quadratic helps off-grid but hurts at a
+held-out node — a global fit is not node-exact. All standard libraries (scipy, GPyTorch);
+the GPU path tiles 2048³ with CuPy.
 
 ---
 
-## 5. Done so far
-- ✅ GOTPM format decoded, reader validated on real files
-- ✅ Subfile layout verified — 250 slabs, ordered in z, gap 0.000, overlap 0.000
-- ✅ Shared-IC directionality found (section 2)
-- ✅ First real-data P(k) via pypower (shot noise matches V/N exactly)
-- ✅ Parameter-space analysis
-
-## 6. Next
-1. **Interpolate, on real data.** The premise work is done and the answer is favourable,
-   so the next thing is the actual deliverable: hold out Ωm = 0.26 and predict it from
-   0.21 and 0.36 (w0=−1, wa=0), then compare per-particle and via P(k).
-2. **More (w0, wa) pairs** to confirm the dark-energy proportionality with >2 points.
-3. **Test the prediction**: re-measure |Δr| after growth normalization. It should collapse
-   the dark-energy cases to ~0 and leave a residual for Ωm. If that holds, the residual is
-   the shape term and can be modelled separately.
-4. **Interpolate varying Ωm only** — the hard axis, the cleanest first real-data test.
-5. Are the clustered mover regions halos or voids, and is the **direction** of motion there
-   systematic? `--stats-out` now records per-axis and per-slab statistics.
-6. Evaluate interpolation accuracy via the **P(k) ratio**.
-
-✅ **Parallelization is done** — `--sub-range` + `merge_stats.py` + `job_verify_ic.sh`.
-Slabs are independent, so A's 250 subfiles split across 16 workers on one node
-(64 cores, 500 GB); the merge is bit-identical to a serial run (verified). ~12 h → ~1 h,
-and it moves the work off the login node onto SLURM.
+## 7. Data notes
+- **`SyncINITIAL` is the grid to use** — the same 11 steps in every cosmology
+  (00001 … 01881; 01881 = z=0). `INITIAL` dumps at cosmology-dependent steps.
+- **Ωm = 0.31 has no `SyncINITIAL.01881`**, which is why the ΔΩm = 0.10 rung had to start
+  from 0.26 instead of 0.21. Worth checking whether it exists elsewhere.
+- Cosmologies are split across `/gpfs` and `/multiverse`, and a directory can exist in one
+  path as an empty shell (logs only) — **count particle files, don't trust `ls -d`**.
+- The `s09` variant uses a different σ8 convention → exclude from the grid.
 
 ---
 
-## Figures
-1. **om_ladder.png** ★★ — the decisive one. (a) |Δr| vs ΔΩm, mildly sublinear.
-   (b) coherence: measured step = 94% of the linear sum, not the quadrature sum.
-   (c) at ΔΩm = 0.05, only 41 particles in 8.59 G break 10 cMpc/h.
-2. **dr_scaling.png** ★ — the mechanism. (a) displacement vs growth difference: the two
-   dark-energy runs fall on one line through the origin, the Ωm runs sit 1.7–2.7× above it.
-   (b) four scans, median and max, against the 10 cMpc/h reference.
-3. **w0wa_grid.png** — the 50 cosmologies in (w0, wa), colored by Ωm
-3. **shared_ic_dr.png** — survival curves (fraction moving more than x) for the degenerate
-   w0/wa pair vs the Ωm pair; the two are cleanly separated.
-3. **movers_compare.png** — where the biggest movers sit (note the colorbar scales differ
-   by an order of magnitude between the two rows)
-4. **methods_results.png** — mock accuracy of the four models
-5. **param_space.png** — if the σ8-vs-Ωm point needs making
-6. **slabs_compare.png** — two cosmologies look structurally similar
+## 8. Next
+1. **The actual interpolation, on real data**: hold out Ωm = 0.26 and predict it from 0.21
+   and 0.36 (w0=−1, wa=0); compare per-particle and via P(k). The premise work supports it.
+2. **Test the growth-normalisation prediction** — it should collapse the dark-energy
+   direction and leave an Ωm residual.
+3. **More (w0, wa) pairs** — the proportionality currently rests on two points.
+4. Settle coherence properly with a per-particle **dot product** of the two displacement
+   vectors.
 
-## ⚠️ Be honest about
-- **The dark-energy proportionality rests on 2 points.** Striking, but it needs more
-  (w0, wa) pairs before being called a law.
-- **The ΔΩm = 0.10 rung starts from 0.26, the others from 0.21.** So the ladder is not
-  perfectly controlled — the response could depend on absolute Ωm, not only on ΔΩm.
-  (Ωm = 0.31 has no SyncINITIAL.01881, which is why.) The coherence test is unaffected,
-  since it only uses the fact that 0.21→0.36 is the composition of the two steps.
-- **Coherence is measured on medians**, which is indicative rather than exact; a
-  per-particle dot product of the two displacement vectors would settle it properly.
-- **The matching window bounds |Δz|, not |Δr|** — slabs are cut along z, so large x/y motion
-  is measured exactly and only |Δz| > w×4.3 goes unmatched. Here that cost at most 35
-  particles out of 8.59 G, so all four tails are effectively complete.
-- The growth factors come from CAMB via cosmoprimo, cross-checked earlier against an
-  in-house ODE to 0.03%.
+## ⚠️ Caveats to state plainly
+- The dark-energy proportionality rests on **2 points**.
+- The ΔΩm = 0.10 rung starts from 0.26, the others from 0.21, so the ladder is not
+  perfectly controlled — the response could depend on absolute Ωm, not only on ΔΩm. The
+  coherence test is unaffected, since it only uses that 0.21→0.36 is the composition of
+  the other two.
+- Coherence is computed from medians, which is indicative rather than exact (see Next 4).
+- All interpolation-accuracy numbers are still **mock**; real-data numbers do not exist yet.

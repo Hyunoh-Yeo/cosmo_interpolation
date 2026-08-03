@@ -27,6 +27,9 @@ NWORK=${5:-16}
 STEP=${STEP:-1881}
 PREFIX=${PREFIX:-SyncINITIAL}
 NSUB=${NSUB:-250}
+# SAVE_MOVERS=<dr> exports every particle above that |dr| (indx, dr, x, y, z) per worker,
+# so the "sensitive locations" can be mapped over the whole box rather than a top-20 list.
+SAVE_MOVERS=${SAVE_MOVERS:-}
 
 cd "$SLURM_SUBMIT_DIR"
 source ~/setup_cosmo.sh
@@ -44,10 +47,14 @@ for ((i = 0; i < NWORK; i++)); do
     a=$(( i * per ))
     b=$(( a + per )); (( b > NSUB )) && b=$NSUB
     (( a >= NSUB )) && break
+    mv_args=()
+    [ -n "$SAVE_MOVERS" ] && mv_args=(--save-movers "$SAVE_MOVERS"
+                                      --movers-out "$WORKDIR/mv_$(printf %03d "$i").npy")
     python3 verify_shared_ic.py "$DIR_A" "$DIR_B" \
         --prefix "$PREFIX" --step "$STEP" --window "$WINDOW" \
         --sub-range "${a}:${b}" \
         --stats-out "$WORKDIR/part_$(printf %03d "$i").npz" \
+        "${mv_args[@]}" \
         > "$WORKDIR/w$(printf %03d "$i").log" 2>&1 &
     pids+=($!)
 done
@@ -63,4 +70,20 @@ fi
 echo "[$(date)] all workers done, merging"
 
 python3 merge_stats.py "$WORKDIR/part_*.npz" --out "stats_${TAG}.npz"
+
+if [ -n "$SAVE_MOVERS" ]; then
+    python3 - "$WORKDIR" "movers_${TAG}.npy" <<'PY'
+import glob, sys, numpy as np
+d, out = sys.argv[1], sys.argv[2]
+f = sorted(glob.glob(d + "/mv_*.npy"))
+a = [np.load(p) for p in f]
+a = [x for x in a if x.size]
+if a:
+    m = np.concatenate(a)
+    np.save(out, m)
+    print("merged %d movers from %d workers -> %s" % (len(m), len(f), out))
+else:
+    print("no movers above the threshold in any worker")
+PY
+fi
 echo "[$(date)] $TAG complete -> stats_${TAG}.npz"
