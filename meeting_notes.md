@@ -1,12 +1,17 @@
 # Meeting notes — 2026-07-27
 
 ## 🎯 One-line takeaway
-> Four complete-box scans (8.59 G particles each) show that how far a particle moves
-> between two cosmologies is **set by the linear growth difference — but only for dark
-> energy.** Along w0/wa, |Δr| is proportional to ΔD with a single constant. Changing Ωm
-> moves particles **1.8–2.8× further** than that law predicts, because Ωm reshapes the
-> initial power spectrum rather than merely rescaling it.
-> ⇒ growth normalization should fully fix the w0/wa direction and only partly the Ωm one.
+> **The Ωm axis is interpolatable.** At the spacing we actually interpolate over
+> (ΔΩm = 0.05), only **41 particles out of 8.59 billion** exceed 10 cMpc/h, and the
+> displacement field is **coherent** — successive Ωm steps add up (94 % of the linear
+> sum) instead of scattering (which would have given 1.93 instead of 2.51). The earlier
+> alarming numbers were all corner-to-corner (ΔΩm = 0.15), a case interpolation never
+> has to handle.
+>
+> Underlying mechanism, from six full-box scans: displacement is **proportional to the
+> linear growth difference for dark energy** (two runs agree to 7 % across a 35× range),
+> while Ωm moves particles 1.8–2.8× further than that law — because Ωm reshapes the
+> initial power spectrum rather than only rescaling it.
 
 ---
 
@@ -31,7 +36,27 @@ the position difference |Δr|. Scan is unbiased — particles are matched by ide
 neighbouring z-slabs, so boundary-crossers (the biggest movers) are not silently dropped,
 which is what the earlier single-subfile measurement did wrong.
 
-### Result — four complete-box scans
+### The decisive test: the ΔΩm ladder
+**[figure: om_ladder.png]** Three full-box scans at w0=−1, wa=0:
+
+| ΔΩm | pair | median | max | >10 cMpc/h |
+|-----|------|--------|-----|------------|
+| **0.05** (the real grid spacing) | 0.21→0.26 | **1.097** | 12.65 | **41** (4.8e-9) |
+| 0.10 | 0.26→0.36 | 1.585 | 19.03 | 129,853 |
+| 0.15 (corner to corner) | 0.21→0.36 | 2.512 | 19.87 | 443,621 |
+
+1. **At ΔΩm = 0.05 only 41 particles in 8.59 G exceed 10 cMpc/h.** Every alarming number
+   so far came from the corner-to-corner case, which interpolation never faces.
+2. **The steps add, they do not scatter.** 0.15 is the composition of the other two:
+   uncorrelated steps would give the quadrature sum 1.93, fully coherent steps the linear
+   sum 2.68 — measured **2.51, i.e. 94 % of the linear sum.** The displacement field is
+   coherent, which is precisely what makes it fittable.
+3. **Mildly sublinear, no saturation**: |Δr| ∝ ΔΩm^0.75.
+
+⇒ Ωm is hard in *magnitude* but well-behaved in *structure*. Large motion was never the
+problem; unpredictable motion would have been, and it is not unpredictable.
+
+### The mechanism — six complete-box scans
 **[figure: dr_scaling.png]** All four are full-box (8.59 G particles each, `unmatched` ≤ 35,
 i.e. 4e-9 of the box), so every tail is complete.
 
@@ -78,10 +103,6 @@ truncated z-range (0–34 of 1024), not a wrap error: in the full scan the large
 spread through the box — (685, 1013, 264), (910, 418, 71), (294, 821, 963), (529, 234, 946),
 (78, 290, 60), (559, 220, 833) — with no edge preference.
 
-### Why — the growth difference
-Different Ωm ⇒ different amount of structure growth by z=0 ⇒ particles systematically
-rearrange. Changing w0/wa is negligible by comparison, because dark energy only acts late.
-
 ### Sensitive locations are real and clustered
 **[figure: movers_compare.png]** The biggest movers are not scattered — they **concentrate
 on specific halos**. In the full same-Ωm scan, 6 of the top 20 sit within ~1 cMpc/h of
@@ -92,16 +113,17 @@ dense spots are genuinely cosmology-sensitive.
 
 ---
 
-## 3. What this means for the project (not fatal — it points the way)
+## 3. What this means for the project
 
-1. **Interpolation happens between adjacent grid points.** The different-Ωm result above is
-   corner-to-corner (ΔΩm = 0.15); the actual grid spacing is 0.05, so real motion should be
-   substantially smaller. **Next: measure adjacent Ωm (0.21 ↔ 0.26).**
-2. **Growth-factor normalization is essential along Ωm.** Most of the motion is the growth
-   difference, so normalizing to a common growth amplitude should shrink |Δr| a lot
-   (`cpl_growth.py`, cosmoprimo). This result turns that step from optional to required.
-3. **Ωm = hard axis, w0/wa = easy axis** — this should shape the interpolation design
-   (e.g. more care, or more training points, along Ωm).
+1. **The premise holds where it needs to.** At the real grid spacing the criterion is met
+   by ~8 orders of magnitude (41 particles in 8.59 G), and the displacement field is
+   coherent rather than chaotic. The verification phase can close.
+2. **Growth normalization is the right pre-processing step**, and we now know exactly what
+   it will and will not do: it should absorb the dark-energy direction entirely (|Δr| ∝ ΔD
+   there) and leave a coherent Ωm residual from the power-spectrum shape change.
+3. **Ωm is the axis that carries real signal** — w0/wa pairs can even be near-degenerate.
+   So the interpolator should be given room along Ωm, and the (w0, wa) grid can be judged
+   by growth difference rather than by parameter distance.
 
 ---
 
@@ -131,9 +153,9 @@ error [cMpc/h]:
 - ✅ Parameter-space analysis
 
 ## 6. Next
-1. **ΔΩm ladder: 0.05, 0.10, 0.15** at fixed (w0, wa). Does |Δr| grow linearly in ΔΩm?
-   Linear ⇒ Ωm is interpolatable despite the large motion. This is the decisive test, and
-   the two Ωm points we have are both at ΔΩm = 0.15, so it is currently untested.
+1. **Interpolate, on real data.** The premise work is done and the answer is favourable,
+   so the next thing is the actual deliverable: hold out Ωm = 0.26 and predict it from
+   0.21 and 0.36 (w0=−1, wa=0), then compare per-particle and via P(k).
 2. **More (w0, wa) pairs** to confirm the dark-energy proportionality with >2 points.
 3. **Test the prediction**: re-measure |Δr| after growth normalization. It should collapse
    the dark-energy cases to ~0 and leave a residual for Ωm. If that holds, the residual is
@@ -151,10 +173,13 @@ and it moves the work off the login node onto SLURM.
 ---
 
 ## Figures
-1. **w0wa_grid.png** — the 50 cosmologies in (w0, wa), colored by Ωm
-2. **dr_scaling.png** ★ — the key figure. (a) displacement vs growth difference: the two
+1. **om_ladder.png** ★★ — the decisive one. (a) |Δr| vs ΔΩm, mildly sublinear.
+   (b) coherence: measured step = 94% of the linear sum, not the quadrature sum.
+   (c) at ΔΩm = 0.05, only 41 particles in 8.59 G break 10 cMpc/h.
+2. **dr_scaling.png** ★ — the mechanism. (a) displacement vs growth difference: the two
    dark-energy runs fall on one line through the origin, the Ωm runs sit 1.7–2.7× above it.
-   (b) all four scans, median and max, against the 10 cMpc/h reference.
+   (b) four scans, median and max, against the 10 cMpc/h reference.
+3. **w0wa_grid.png** — the 50 cosmologies in (w0, wa), colored by Ωm
 3. **shared_ic_dr.png** — survival curves (fraction moving more than x) for the degenerate
    w0/wa pair vs the Ωm pair; the two are cleanly separated.
 3. **movers_compare.png** — where the biggest movers sit (note the colorbar scales differ
@@ -164,12 +189,14 @@ and it moves the work off the login node onto SLURM.
 6. **slabs_compare.png** — two cosmologies look structurally similar
 
 ## ⚠️ Be honest about
-- **Only 4 pairs measured, and 2 of the 4 points define the dark-energy line.** The scaling
-  law is striking but thin; it needs more (w0, wa) pairs before being called a law.
-- **Both Ωm runs are corner-to-corner** (ΔΩm = 0.15). Actual interpolation is adjacent
-  (0.05), so **we have not yet measured the case that matters**. Whether |Δr| scales
-  linearly in ΔΩm is untested — and that is exactly what decides whether Ωm is
-  interpolatable.
+- **The dark-energy proportionality rests on 2 points.** Striking, but it needs more
+  (w0, wa) pairs before being called a law.
+- **The ΔΩm = 0.10 rung starts from 0.26, the others from 0.21.** So the ladder is not
+  perfectly controlled — the response could depend on absolute Ωm, not only on ΔΩm.
+  (Ωm = 0.31 has no SyncINITIAL.01881, which is why.) The coherence test is unaffected,
+  since it only uses the fact that 0.21→0.36 is the composition of the two steps.
+- **Coherence is measured on medians**, which is indicative rather than exact; a
+  per-particle dot product of the two displacement vectors would settle it properly.
 - **The matching window bounds |Δz|, not |Δr|** — slabs are cut along z, so large x/y motion
   is measured exactly and only |Δz| > w×4.3 goes unmatched. Here that cost at most 35
   particles out of 8.59 G, so all four tails are effectively complete.

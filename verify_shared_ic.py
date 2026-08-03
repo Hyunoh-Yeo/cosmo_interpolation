@@ -31,11 +31,25 @@ def load(path):
     return rec["indx"], decode_positions(rec, p), float(p["Boxsize(Mpc/h)"]), p
 
 
+# The suite is mid-migration: a cosmology lives in one of these, not both, and a
+# directory can exist in the other path as an empty shell (logs only). So resolve a
+# bare name by looking for actual particle files rather than by directory existence.
+ROOTS = ("/gpfs/mhee7173_snu/Multiverse_CPL",
+         "/multiverse/mhee7173_snu/MultiverseCPL")
+
+
 def subfiles(d, prefix, step):
-    f = sorted(glob.glob(os.path.join(d, "%s.%05d?????" % (prefix, step))))
-    if not f:
-        raise SystemExit("no %s.%05d* subfiles in %s" % (prefix, step, d))
-    return f
+    """Subfile paths for a snapshot. `d` may be a full path or a bare cosmology name
+    (e.g. MV_Om0.26_-1_0), in which case both storage roots are searched."""
+    cands = [d] if os.path.sep in d else [os.path.join(r, d) for r in ROOTS]
+    for c in cands:
+        f = sorted(glob.glob(os.path.join(c, "%s.%05d?????" % (prefix, step))))
+        if f:
+            if c != d:
+                print("resolved %s -> %s" % (d, c))
+            return f
+    raise SystemExit("no %s.%05d* subfiles for '%s' (looked in: %s)"
+                     % (prefix, step, d, ", ".join(cands)))
 
 
 def minimal_image(d, box):

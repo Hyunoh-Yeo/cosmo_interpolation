@@ -163,6 +163,48 @@ rec = np.fromfile(f, dtype=REC)     # after seeking past the header; slices the 
 
 ## 5b. Validations
 
+### The Ωm ladder — the Ωm axis IS interpolatable (2026-08-03)
+
+The decisive test: does displacement grow smoothly and predictably with ΔΩm? Three
+complete-box scans at z=0, w0=−1, wa=0 throughout, 8.59 G particles each
+(`make_omladder_fig.py` → `om_ladder.png`):
+
+| ΔΩm | pair | median | 99.99% | max | >10 cMpc/h | fraction |
+|-----|------|--------|--------|-----|------------|----------|
+| **0.05** | 0.21→0.26 | **1.097** | 4.57 | 12.65 | **41** | **4.8e-9** |
+| 0.10 | 0.26→0.36 | 1.585 | 8.32 | 19.03 | 129,853 | 1.5e-5 |
+| 0.15 | 0.21→0.36 | 2.512 | 9.55 | 19.87 | 443,621 | 5.2e-5 |
+
+**1. At the spacing we actually interpolate over (ΔΩm = 0.05), the criterion is met by
+a huge margin — 41 particles out of 8,589,934,592 exceed 10 cMpc/h.** The earlier
+alarming numbers were all corner-to-corner (ΔΩm = 0.15), which is not a case the
+interpolation ever has to handle.
+
+**2. The displacement field is coherent, not random.** The 0.15 step is the composition
+of the other two, so comparing it to them tests whether successive steps line up:
+
+| | median \|Δr\| |
+|--|-------------|
+| 0.21→0.26 | 1.097 |
+| 0.26→0.36 | 1.585 |
+| quadrature sum (what *uncorrelated* steps would give) | 1.927 |
+| linear sum (what *fully coherent* steps would give) | 2.681 |
+| **measured 0.21→0.36** | **2.512** |
+
+The measurement is **94 % of the linear sum**, i.e. 78 % of the way from random to
+fully coherent. Particles keep being pushed in the *same direction* as Ωm increases —
+they do not scatter. A smooth, coherent displacement field is exactly what an
+interpolator can capture, which is why "large motion" was never the real question.
+
+**3. The scaling is mildly sublinear with no saturation**: |Δr| ∝ ΔΩm^0.75 (measured
+2.51 vs 3.29 that strict linearity would predict at ΔΩm = 0.15). Smooth and monotonic,
+so it is fittable; the deviation from linear is itself a signal the interpolator can
+learn rather than a breakdown.
+
+⇒ **The Ωm direction is hard in magnitude but well-behaved in structure.** Combined with
+the growth-scaling result below, the picture is: dark energy is absorbed by growth
+normalisation, and Ωm leaves a coherent, smoothly-scaling residual — interpolatable.
+
 ### Four full-box scans — what actually drives particle displacement (2026-07-27)
 
 All four are complete-box scans at z=0 (`SyncINITIAL.01881`, window ±3): 8.59 G
