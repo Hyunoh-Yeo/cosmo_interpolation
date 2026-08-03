@@ -109,10 +109,10 @@ threshold counts, per-axis sums, top-20 and unmatched all match exactly).
 
 | | machine | processes | wall time |
 |--|---------|-----------|-----------|
-| before | login node | 1 | ~10 h |
-| after | compute node via SLURM | 16 | **48 min** |
+| before | login node | 1 | **13 h 20 min** (01:43 → 15:03) |
+| after | compute node via SLURM | 16 | **48 min** (03:37:25 → 04:25:36) |
 
-≈13×. Not a controlled benchmark — different cosmology pairs and different machines — but
+**≈17×.** Not a controlled benchmark — different cosmology pairs and different machines — but
 the practical effect is a pair per hour instead of per night, and the work is off the login
 node. Worker CPU sits at ~47 %, so the bottleneck is now GPFS I/O rather than cores;
 adding workers past ~16 would gain little.

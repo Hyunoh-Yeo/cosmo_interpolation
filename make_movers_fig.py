@@ -115,15 +115,26 @@ ax.set_xlabel("z [cMpc/h]"); ax.set_ylabel("movers per bin")
 ax.set_title("z distribution of the top movers", fontsize=12)
 ax.legend(fontsize=9); ax.grid(alpha=0.22, axis="y")
 
-# ---------- bottom row: the full-box movers, x-y, colored per scan ----------
+# ---------- bottom row: x-y, smoke and full together ----------
 ax = fig.add_subplot(gs[1, :2])
 cmap = plt.cm.viridis(np.linspace(0.05, 0.9, len(FULL)))
 for (name, d), c in zip(FULL.items(), cmap):
     ax.scatter(d[:, 1], d[:, 2], s=52, color=c, edgecolor="black", lw=0.4, label=name)
+ax.scatter(SMOKE[:, 1], SMOKE[:, 2], s=62, marker="^", color="#d62728",
+           edgecolor="black", lw=0.5, label="8-subfile smoke", zorder=4)
+# the corner pile the smoke reported, which prompted the periodic-boundary question
+cl = SMOKE[(SMOKE[:, 1] < 10) & (SMOKE[:, 2] > 975)]
+ax.add_patch(plt.Circle((cl[:, 1].mean(), cl[:, 2].mean()), 55, fill=False,
+                        color="#d62728", lw=1.6, ls="--", zorder=5))
+ax.annotate("%d of the smoke's top 20 sit here,\nat (%.0f, %.0f) — near the box corner"
+            % (len(cl), cl[:, 1].mean(), cl[:, 2].mean()),
+            xy=(cl[:, 1].mean() + 45, cl[:, 2].mean()), xytext=(210, 900),
+            fontsize=9, color="#a01f1f",
+            arrowprops=dict(arrowstyle="->", color="#d62728", lw=1.3))
 ax.set_xlabel("x [cMpc/h]"); ax.set_ylabel("y [cMpc/h]")
 ax.set_xlim(0, BOX); ax.set_ylim(0, BOX); ax.set_aspect("equal"); ax.grid(alpha=0.22)
-ax.legend(fontsize=8.5, loc="upper left", framealpha=0.95, ncol=2)
-ax.set_title("Full-box scans: top movers cover the whole box, and repeat at the same halos",
+ax.legend(fontsize=8.5, loc="lower left", framealpha=0.95, ncol=2)
+ax.set_title("x-y: the smoke's corner pile vs the full scans spread over the box",
              fontsize=12)
 
 # ---------- bottom right: how tightly they cluster ----------
