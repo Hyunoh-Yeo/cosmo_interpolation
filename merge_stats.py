@@ -40,11 +40,18 @@ def main():
             d_sq = d["d_sq"].astype(float).copy()
             bins, thresholds = d["bins"], d["thresholds"]
             n = int(d["n"]); unmatched = int(d["unmatched"]); box = float(d["box"])
+            cos_bins, psi_bins = d["cos_bins"], d["psi_bins"]
+            cos_hist = d["cos_hist"].astype(np.int64).copy(); cos_sum = float(d["cos_sum"])
+            psi_n = d["psi_n"].astype(np.int64).copy()
+            psi_dr = d["psi_dr"].astype(float).copy(); psi_cos = d["psi_cos"].astype(float).copy()
         else:
             hist += d["hist"].astype(np.int64)
             over += d["over"].astype(float)
             d_sum += d["d_sum"]; d_sq += d["d_sq"]
             n += int(d["n"]); unmatched += int(d["unmatched"])
+            cos_hist += d["cos_hist"].astype(np.int64); cos_sum += float(d["cos_sum"])
+            psi_n += d["psi_n"].astype(np.int64)
+            psi_dr += d["psi_dr"]; psi_cos += d["psi_cos"]
         slabs.append(d["slab"])
         top_dr.append(d["top_dr"]); top_id.append(d["top_id"]); top_pos.append(d["top_pos"])
 
@@ -57,7 +64,9 @@ def main():
 
     np.savez(args.out, bins=bins, hist=hist, n=n, box=box, unmatched=unmatched,
              slab=slab, d_sum=d_sum, d_sq=d_sq, thresholds=thresholds, over=over,
-             top_dr=tdr, top_id=tid, top_pos=tpos)
+             top_dr=tdr, top_id=tid, top_pos=tpos,
+             cos_bins=cos_bins, cos_hist=cos_hist, cos_sum=cos_sum,
+             psi_bins=psi_bins, psi_n=psi_n, psi_dr=psi_dr, psi_cos=psi_cos)
 
     # ---- report, same shape as a single-process run ----
     c = np.cumsum(hist)
@@ -82,6 +91,18 @@ def main():
     for k, ax in enumerate("xyz"):
         print("   d%s : mean %+9.5f   rms %8.4f" % (ax, mean[k], rms[k]))
     print("   rms spread across axes: %.2f%%" % (100 * (rms.max() - rms.min()) / rms.mean()))
+
+    if cos_hist.sum():
+        mc = cos_sum / cos_hist.sum()
+        col = (cos_hist[cos_bins[:-1] >= 0.9].sum() + cos_hist[cos_bins[1:] <= -0.9].sum())
+        print("\nmean cos(dr, psi) = %+0.4f   collinear (|cos|>0.9): %.1f%%"
+              % (mc, 100.0 * col / cos_hist.sum()))
+        m = psi_n > 0
+        if m.any():
+            i0, i1 = np.flatnonzero(m)[[0, -1]]
+            print("  <|dr|> grows %.0fx from |psi| bin %.3f to %.1f cMpc/h"
+                  % ((psi_dr[i1]/psi_n[i1]) / max(psi_dr[i0]/psi_n[i0], 1e-9),
+                     psi_bins[i0], psi_bins[i1+1]))
 
     if len(slab) > 6:
         med = slab[:, 2]

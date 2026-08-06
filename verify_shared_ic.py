@@ -19,10 +19,12 @@ import argparse
 import glob
 import os
 import numpy as np
-from gotpm import read_records, decode_positions
+from gotpm import read_records, decode_positions, geom
 
-THRESHOLDS = (0.5, 1.0, 2.0, 5.0, 10.0)     # cMpc/h; 10 is Dr. Hong's criterion
+THRESHOLDS = (0.5, 1.0, 2.0, 5.0, 10.0)     # cMpc/h; 10 is the reference criterion
 BINS = np.concatenate([[0.0], np.logspace(-4, 3, 351)])
+COS_BINS = np.linspace(-1.0, 1.0, 101)      # alignment of dr with the particle's own psi
+PSI_BINS = np.concatenate([[0.0], np.logspace(-2, 2, 41)])   # |psi| bins, cMpc/h
 NTOP = 20
 
 
@@ -56,6 +58,16 @@ def minimal_image(d, box):
     return (d + 0.5 * box) % box - 0.5 * box
 
 
+def lagrangian(indx, params):
+    """The particle's initial grid position [N,3] in cMpc/h, decoded from indx."""
+    nx, ny, nz, box, mx, mxmy = geom(params)
+    q = np.empty((indx.size, 3), np.float32)
+    q[:, 0] = (indx % mx) * (box / nx)
+    q[:, 1] = ((indx % mxmy) // mx) * (box / ny)
+    q[:, 2] = (indx // mxmy) * (box / nz)
+    return q
+
+
 class Accum:
     """Streaming |dr| statistics: histogram + threshold counts + worst offenders.
 
@@ -77,8 +89,17 @@ class Accum:
         self.d_sum = np.zeros(3)          # sum of signed dx, dy, dz
         self.d_sq = np.zeros(3)           # sum of dx^2, dy^2, dz^2
         self.slab = []                    # (j, n, median, max) per A-slab, for PBC checks
+        # Is dr aligned with the particle's OWN displacement psi = x_A - q (q from indx)?
+        # If cosmology only rescales the displacement (psi_B = (1+e) psi_A) then
+        # dr = -e psi_A, i.e. exactly (anti)parallel. cos_hist records the alignment;
+        # psi_bin accumulates |dr| binned by |psi|, which says where dr grows and why.
+        self.cos_hist = np.zeros(len(COS_BINS) - 1, np.int64)
+        self.cos_sum = 0.0
+        self.psi_n = np.zeros(len(PSI_BINS) - 1, np.int64)     # count per |psi| bin
+        self.psi_dr = np.zeros(len(PSI_BINS) - 1)              # sum |dr| per bin
+        self.psi_cos = np.zeros(len(PSI_BINS) - 1)             # sum cos per bin
 
-    def add(self, dr, ids, pos, dvec=None, slab_j=None):
+    def add(self, dr, ids, pos, dvec=None, slab_j=None, psi=None):
         self.n += dr.size
         self.hist += np.histogram(dr, bins=BINS)[0]
         for t in THRESHOLDS:
@@ -86,6 +107,19 @@ class Accum:
         if dvec is not None and dvec.size:
             self.d_sum += dvec.sum(0)
             self.d_sq += (dvec.astype(np.float64) ** 2).sum(0)
+        if psi is not None and psi.size:
+            pn = np.sqrt((psi ** 2).sum(1))
+            ok = (pn > 1e-6) & (dr > 1e-6)
+            if ok.any():
+                c = (dvec[ok] * psi[ok]).sum(1) / (dr[ok] * pn[ok])
+                np.clip(c, -1.0, 1.0, out=c)
+                self.cos_hist += np.histogram(c, bins=COS_BINS)[0]
+                self.cos_sum += float(c.sum())
+                k = np.clip(np.searchsorted(PSI_BINS, pn[ok], "right") - 1,
+                            0, len(PSI_BINS) - 2)
+                self.psi_n += np.bincount(k, minlength=len(PSI_BINS) - 1)
+                self.psi_dr += np.bincount(k, weights=dr[ok], minlength=len(PSI_BINS) - 1)
+                self.psi_cos += np.bincount(k, weights=c, minlength=len(PSI_BINS) - 1)
         if slab_j is not None:
             self.slab.append((slab_j, dr.size,
                               float(np.median(dr)) if dr.size else np.nan,
@@ -155,6 +189,31 @@ class Accum:
             print("   rms spread across axes: %.2f%%   (large => motion has a preferred axis)"
                   % (100.0 * (rms.max() - rms.min()) / max(rms.mean(), 1e-12)))
 
+        # --- which direction does dr point, and where does it grow? ---
+        nc = int(self.cos_hist.sum())
+        if nc:
+            mean_cos = self.cos_sum / nc
+            frac_al = float(self.cos_hist[COS_BINS[:-1] >= 0.9].sum()) / nc
+            frac_anti = float(self.cos_hist[COS_BINS[1:] <= -0.9].sum()) / nc
+            print("\ndirection of dr vs the particle's own displacement psi = x_A - q:")
+            print("   mean cos(dr, psi) = %+0.4f   (0 = random, +-1 = pure rescaling of psi)"
+                  % mean_cos)
+            print("   |cos| > 0.9 : %.1f%% aligned + %.1f%% anti-aligned = %.1f%% collinear"
+                  % (100 * frac_al, 100 * frac_anti, 100 * (frac_al + frac_anti)))
+            m = self.psi_n > 0
+            if m.any():
+                print("\n   |psi| [cMpc/h]      <|dr|>    <cos>     particles")
+                idx = np.flatnonzero(m)
+                for i in idx[::max(1, len(idx) // 8)]:
+                    print("   %6.3f - %-6.3f  %9.4f %+8.3f %13d"
+                          % (PSI_BINS[i], PSI_BINS[i + 1], self.psi_dr[i] / self.psi_n[i],
+                             self.psi_cos[i] / self.psi_n[i], self.psi_n[i]))
+                lo, hi = idx[0], idx[-1]
+                r_lo = self.psi_dr[lo] / self.psi_n[lo]
+                r_hi = self.psi_dr[hi] / self.psi_n[hi]
+                print("   => <|dr|> grows %.0fx from the smallest to the largest |psi| bin"
+                      % (r_hi / max(r_lo, 1e-9)))
+
         # --- do the first/last slabs behave like the interior? (periodic-boundary check) ---
         if len(self.slab) > 6:
             s = np.array(self.slab, float)
@@ -186,7 +245,10 @@ class Accum:
                  d_sum=self.d_sum, d_sq=self.d_sq,
                  thresholds=np.array(THRESHOLDS),
                  over=np.array([self.over[t] for t in THRESHOLDS], float),
-                 top_dr=self.top_dr, top_id=self.top_id.astype(float), top_pos=self.top_pos)
+                 top_dr=self.top_dr, top_id=self.top_id.astype(float), top_pos=self.top_pos,
+                 cos_bins=COS_BINS, cos_hist=self.cos_hist, cos_sum=self.cos_sum,
+                 psi_bins=PSI_BINS, psi_n=self.psi_n, psi_dr=self.psi_dr,
+                 psi_cos=self.psi_cos)
         print("\nsaved full histogram + slab/axis stats -> %s" % path)
 
 
@@ -230,7 +292,7 @@ def run_window(fa, fb, w, box, save_above=None, ja=0, jb=None):
             if m not in win:
                 del cache[m]
 
-        ia, xa, box, _ = load(fa[j])
+        ia, xa, box, hdr = load(fa[j])
         xb = np.full_like(xa, np.nan)
         todo = np.ones(ia.size, bool)
         for m in win:
@@ -246,8 +308,12 @@ def run_window(fa, fb, w, box, save_above=None, ja=0, jb=None):
         found = ~todo
         unmatched += int(todo.sum())
         dvec = minimal_image(xa[found] - xb[found], box)
+        # psi = how far this particle has moved from its own Lagrangian node since z_init.
+        # dr is compared against it to see whether the cosmology difference simply
+        # rescales that motion (dr parallel to psi) or redirects it.
+        psi = minimal_image(xa[found] - lagrangian(ia[found], hdr), box)
         acc.add(np.sqrt((dvec ** 2).sum(1)), ia[found], xa[found],
-                dvec=dvec, slab_j=j)
+                dvec=dvec, slab_j=j, psi=psi)
         if (j - ja + 1) % every == 0 or j == jb - 1:
             print("  %d/%d subfiles, %d compared, %d unmatched (|dz|>%.1f)"
                   % (j - ja + 1, ntot, acc.n, unmatched, w * 4.3))
