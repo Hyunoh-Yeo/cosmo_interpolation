@@ -29,4 +29,5 @@ mid=$(sbatch --parsable --dependency=afterok:${aid} --job-name="${TAG}_merge" \
 echo "merge job  : $mid  (starts only if all tasks succeed)"
 echo
 echo "watch:   squeue -u \$USER"
-echo "result:  stats_${TAG}.npz   logs: parts_${TAG}/w*.log"
+echo "result:  stats_${TAG}.npz"
+echo "logs:    parts_${TAG}/w0.log .. w${last}.log   (unpadded, from SLURM %a)"

@@ -7,6 +7,8 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=20G
 #SBATCH --output=parts_%x/w%a.log
+# NOTE: %a is the raw array index, unpadded -> w0.log .. w15.log
+#       (the part_*.npz this worker writes ARE zero-padded: part_000.npz)
 # One INDEPENDENT job per worker, instead of 16 background processes inside one job.
 #
 # Why: SLURM can then place the workers on whatever cores and nodes are free, they
