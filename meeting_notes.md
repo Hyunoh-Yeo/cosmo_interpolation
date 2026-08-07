@@ -149,14 +149,19 @@ the GPU path tiles 2048³ with CuPy.
 
 ---
 
-## 8. Next
-1. **The actual interpolation, on real data**: hold out Ωm = 0.26 and predict it from 0.21
-   and 0.36 (w0=−1, wa=0); compare per-particle and via P(k). The premise work supports it.
-2. **Test the growth-normalisation prediction** — it should collapse the dark-energy
-   direction and leave an Ωm residual.
-3. **More (w0, wa) pairs** — the proportionality currently rests on two points.
-4. Settle coherence properly with a per-particle **dot product** of the two displacement
-   vectors.
+## 8. Next — the plan for next week
+**The verification phase closes here.** The premise holds at the spacing that matters,
+the displacement field is coherent, and we know which axis carries the difficulty and
+why. So the next deliverable is the thing the project is actually for:
+
+1. **Interpolation on real data.** Hold out Ωm = 0.26 and predict it from 0.21 and 0.36
+   (w0 = −1, wa = 0), then compare against the true snapshot per particle, and via P(k)
+   and ξ(r). This is what I will bring next week.
+2. Test the growth-normalisation prediction along the way — it should collapse the
+   dark-energy direction and leave a coherent Ωm residual.
+3. Settle the velocity unit on smoothed large-scale fields (see §4), so per-particle
+   velocity statistics can be quoted in km/s.
+4. Enumerate the SyncINITIAL steps across all cosmologies before fixing the grid (§7).
 
 ## ⚠️ Caveats to state plainly
 - The dark-energy proportionality rests on **2 points**.
