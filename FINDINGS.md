@@ -29,9 +29,13 @@ the KIAS `grammar` cluster (2026-07).
   directory holds hundreds of files (per-step `log*`, `params.*`, executables,
   `xzslice.*`, ...); the actual particle snapshots are only the `<prefix>.SSSSS?????`
   ones, in 250-subfile sets. Two prefixes carry particles:
-  - **`SyncINITIAL`** — a **standardised ladder of the same 11 steps in every
-    cosmology**: `00001 00281 00345 00441 00601 00921 01090 01241 01561 01706 01881`.
-    Verified identical across `MV_Om0.26_-1.2_-0.8` and `MV_Om0.26_-1.0_-1.6`.
+  - **`SyncINITIAL`** — the standardised ladder, but ⚠️ **the steps are not identical
+    across cosmologies**. `MV_Om0.26_-1.2_-0.8` and `MV_Om0.26_-1.0_-1.6` share 11
+    (`00001 00281 00345 00441 00601 00921 01090 01241 01561 01706 01881`), which is what
+    the earlier note generalised from — but `MV_Om0.21_-1_0` has only 9: it lacks
+    00281/00441/01706 and adds 01631. So the usable grid is the **intersection**, 8 steps
+    on present evidence: `00001 00345 00601 00921 01090 01241 01561 01881`. Enumerate
+    across all cosmologies before fixing the interpolation grid.
     `01881 = z=0`, `00001 = initial conditions` (both from headers, §5). This is the
     common ladder cross-cosmology work needs.
   - **`INITIAL`** — ad-hoc dumps at cosmology-dependent steps (e.g. 1150+1660 for one
@@ -314,6 +318,43 @@ interparticle spacing 0.5 cMpc/h.
 **Still to do**: (1) the full 250-slab run (firms up the true max, kills the
 truncation artefact); (2) the harder **different-Ωm** case (e.g. 0.21 vs 0.36), where
 growth histories diverge most — this pair shares Ωm, so its small effect is expected.
+
+### Velocity units — calibrated at z_init only, not yet settled elsewhere (2026-08)
+`samples/` declares `Fact1/Fact2/Pfact` but never uses them, and in the actual headers
+all three read **0**, so the km/s conversion cannot be taken from the code. Linear
+theory supplies it instead: v_pec = a H(a) f(a) Psi, and Psi = x − q is decodable from
+`indx` (`calibrate_velocity.py`).
+
+**At z = 47 the calibration is textbook-clean**: cos(v, Psi) = **+1.0000**, and
+v_raw/|Psi| is flat to **0.07 %** across every |Psi| bin, giving
+
+    v_raw / |Psi| = 9.7630e-4   ->   1 code unit = 3.25e5 km/s
+
+That is internally consistent (|v_raw| rms 3.26e-4 → 106 km/s, and 106 km/s is what
+a H f Psi predicts at z=47), and the ratio 1/9.763e-4 = 1024.28 ≈ the boxsize, i.e.
+at the IC epoch the stored velocity is numerically the displacement in box units.
+
+**But the same procedure at later steps gives a drifting answer**, and we cannot yet
+say why:
+
+| z | cos(v, Psi) | v_raw/\|Psi\| | implied km/s per code unit |
+|---|-------------|--------------|---------------------------|
+| 47.0 | **1.0000** | 9.764e-4 | 3.25e5 |
+| 1.0 | 0.9557 | 7.089e-5 | 8.97e5 |
+| 0.5 | 0.9307 | 5.073e-5 | 1.06e6 |
+| 0.0 | 0.8932 | 2.535e-5 | 1.65e6 |
+
+An 11 % loss of alignment cannot produce a 5× drift in the constant, so nonlinearity
+alone does not explain it. The likely confound is that the plateau is read from
+|Psi| ≈ 0.03–0.1 cMpc/h, which at z=0 (where |Psi| rms is 11.4) selects particles near
+a displacement zero-crossing rather than particles in the linear regime. The
+alternative — that the stored variable is a canonical momentum whose km/s conversion
+carries a power of a — is not ruled out.
+
+⇒ **Do not quote velocities in km/s yet.** Settling it needs the low-z comparison done
+on *smoothed large-scale* fields, where linear theory actually holds, rather than on a
+small-|Psi| subset. Velocity *differences* between cosmologies can still be compared in
+code units, since that is a ratio.
 
 ### Growth factor — in-house ODE validated, then replaced by cosmoprimo (2026-07)
 An in-house scipy ODE integration of the CPL growth equation was cross-checked

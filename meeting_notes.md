@@ -135,8 +135,12 @@ the GPU path tiles 2048³ with CuPy.
 ---
 
 ## 7. Data notes
-- **`SyncINITIAL` is the grid to use** — the same 11 steps in every cosmology
-  (00001 … 01881; 01881 = z=0). `INITIAL` dumps at cosmology-dependent steps.
+- **`SyncINITIAL` is the grid to use, but its steps are NOT identical everywhere.**
+  Om0.26_-1.2_-0.8 has 11 (00001 00281 00345 00441 00601 00921 01090 01241 01561 01706
+  01881); Om0.21_-1_0 has 9, missing 00281/00441/01706 and adding 01631. The usable
+  common ladder is the intersection — 8 steps so far: **00001 00345 00601 00921 01090
+  01241 01561 01881**, with 01881 = z=0. Worth enumerating across all cosmologies
+  before fixing the grid. (`INITIAL` is worse: cosmology-dependent ad-hoc dumps.)
 - **Ωm = 0.31 has no `SyncINITIAL.01881`**, which is why the ΔΩm = 0.10 rung had to start
   from 0.26 instead of 0.21. Worth checking whether it exists elsewhere.
 - Cosmologies are split across `/gpfs` and `/multiverse`, and a directory can exist in one
