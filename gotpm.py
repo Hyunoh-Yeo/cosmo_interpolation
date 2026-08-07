@@ -120,10 +120,26 @@ def read_subfile(path, want_pos=True, want_vel=False, stride=1, id_mod=None,
     return out
 
 
-def list_subfiles(cosmo_dir, step, prefix="INITIAL"):
-    """Sorted list of subfile paths for a snapshot step, e.g. step=1180."""
-    pat = os.path.join(cosmo_dir, f"{prefix}.{step:05d}?????")
-    return sorted(glob.glob(pat))
+# The suite is mid-migration: a cosmology lives in one of these roots, not both, and
+# a directory can exist in the other as an empty shell (logs only). So resolve a bare
+# cosmology name by looking for actual particle files, never by directory existence.
+ROOTS = ("/gpfs/mhee7173_snu/Multiverse_CPL",
+         "/multiverse/mhee7173_snu/MultiverseCPL")
+
+
+def list_subfiles(cosmo_dir, step, prefix="INITIAL", verbose=False):
+    """Sorted subfile paths for a snapshot step, e.g. step=1180.
+
+    `cosmo_dir` may be a full path or a bare cosmology name (MV_Om0.21_-1_0); a bare
+    name is searched for in both storage roots. Returns [] if nothing matches."""
+    cands = [cosmo_dir] if os.sep in cosmo_dir else [os.path.join(r, cosmo_dir) for r in ROOTS]
+    for c in cands:
+        f = sorted(glob.glob(os.path.join(c, f"{prefix}.{step:05d}?????")))
+        if f:
+            if verbose and c != cosmo_dir:
+                print(f"resolved {cosmo_dir} -> {c}")
+            return f
+    return []
 
 
 def snapshot_steps(cosmo_dir, prefix="INITIAL"):

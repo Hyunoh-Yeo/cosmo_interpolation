@@ -19,7 +19,7 @@ import argparse
 import glob
 import os
 import numpy as np
-from gotpm import read_records, decode_positions, geom
+from gotpm import read_records, decode_positions, geom, list_subfiles
 
 THRESHOLDS = (0.5, 1.0, 2.0, 5.0, 10.0)     # cMpc/h; 10 is the reference criterion
 BINS = np.concatenate([[0.0], np.logspace(-4, 3, 351)])
@@ -33,25 +33,12 @@ def load(path):
     return rec["indx"], decode_positions(rec, p), float(p["Boxsize(Mpc/h)"]), p
 
 
-# The suite is mid-migration: a cosmology lives in one of these, not both, and a
-# directory can exist in the other path as an empty shell (logs only). So resolve a
-# bare name by looking for actual particle files rather than by directory existence.
-ROOTS = ("/gpfs/mhee7173_snu/Multiverse_CPL",
-         "/multiverse/mhee7173_snu/MultiverseCPL")
-
-
 def subfiles(d, prefix, step):
-    """Subfile paths for a snapshot. `d` may be a full path or a bare cosmology name
-    (e.g. MV_Om0.26_-1_0), in which case both storage roots are searched."""
-    cands = [d] if os.path.sep in d else [os.path.join(r, d) for r in ROOTS]
-    for c in cands:
-        f = sorted(glob.glob(os.path.join(c, "%s.%05d?????" % (prefix, step))))
-        if f:
-            if c != d:
-                print("resolved %s -> %s" % (d, c))
-            return f
-    raise SystemExit("no %s.%05d* subfiles for '%s' (looked in: %s)"
-                     % (prefix, step, d, ", ".join(cands)))
+    """Subfile paths for a snapshot, erroring out if there are none."""
+    f = list_subfiles(d, step, prefix, verbose=True)
+    if not f:
+        raise SystemExit("no %s.%05d* subfiles for '%s'" % (prefix, step, d))
+    return f
 
 
 def minimal_image(d, box):

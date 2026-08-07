@@ -1,0 +1,10 @@
+# Cosmologies with SyncINITIAL.01881 (z=0), one per line.
+# Bare names are resolved against both storage roots by gotpm.list_subfiles.
+# Verified present:
+MV_Om0.21_-1_0
+MV_Om0.26_-1_0
+MV_Om0.36_-1_0
+MV_Om0.21_-1.4_0
+MV_Om0.36_-1.4_0
+MV_Om0.26_-1.2_-0.8
+MV_Om0.26_-1.0_-1.6

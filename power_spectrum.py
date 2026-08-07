@@ -17,7 +17,7 @@ import argparse
 import glob
 import os
 import numpy as np
-from gotpm import read_records, decode_positions
+from gotpm import read_records, decode_positions, list_subfiles
 
 
 def read_positions(path, frac=1.0, rng=None, stride=1):
@@ -46,10 +46,9 @@ def main():
     ap.add_argument("--out", default=None, help="output .npy (default: pk_<cosmo>_<step>.npy)")
     args = ap.parse_args()
 
-    files = sorted(glob.glob(os.path.join(args.cosmo_dir,
-                                          "%s.%05d?????" % (args.prefix, args.step))))
+    files = list_subfiles(args.cosmo_dir, args.step, args.prefix, verbose=True)
     if not files:
-        raise SystemExit("no subfiles matched in %s for step %d" % (args.cosmo_dir, args.step))
+        raise SystemExit("no %s.%05d* subfiles for '%s'" % (args.prefix, args.step, args.cosmo_dir))
     if args.max_sub:
         files = files[:args.max_sub]
         print("WARNING: only %d/%d subfiles -> P(k) is NOT physically correct "
