@@ -99,8 +99,16 @@ def main():
               % (mc, 100.0 * col / cos_hist.sum()))
         m = psi_n > 0
         if m.any():
+            # the table, not just the endpoints: whether <cos> drifts with |psi| is
+            # what separates "linear rescaling, spoiled at large psi" from "never
+            # aligned at all", and the endpoints alone cannot show that
+            print("\n   %14s %10s %9s %15s" % ("|psi| [cMpc/h]", "<|dr|>", "<cos>", "particles"))
+            for i in np.flatnonzero(m):
+                print("   %6.3f - %-6.3f %9.4f %+9.3f %15d"
+                      % (psi_bins[i], psi_bins[i + 1], psi_dr[i] / psi_n[i],
+                         psi_cos[i] / psi_n[i], psi_n[i]))
             i0, i1 = np.flatnonzero(m)[[0, -1]]
-            print("  <|dr|> grows %.0fx from |psi| bin %.3f to %.1f cMpc/h"
+            print("   => <|dr|> grows %.1fx from |psi| %.3f to %.1f cMpc/h"
                   % ((psi_dr[i1]/psi_n[i1]) / max(psi_dr[i0]/psi_n[i0], 1e-9),
                      psi_bins[i0], psi_bins[i1+1]))
 
